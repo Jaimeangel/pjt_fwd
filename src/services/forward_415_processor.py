@@ -186,7 +186,7 @@ class Forward415Processor:
                         dias_habiles += 1
             
             # Aplicar fórmula: max(dias_habiles - 1, 10)
-            td = max(dias_habiles - 1, 10)
+            td = max(dias_habiles, 10)
             
             return td
             

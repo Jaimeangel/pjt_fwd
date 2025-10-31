@@ -114,8 +114,13 @@ class Csv415Loader:
         print(f"   ✓ Total de filas leídas: {len(df)}")
         print(f"   ✓ Total de columnas: {len(df.columns)}")
         
-        # Mostrar primeras columnas para debug
-        print(f"   ✓ Primeras 5 columnas: {list(df.columns[:5])}")
+        # Limpiar encabezados (espacios y BOM)
+        print(f"\n   Limpiando encabezados...")
+        print(f"   ✓ Encabezados originales: {list(df.columns[:5])}")
+        df.columns = [
+            col.strip().lstrip("\ufeff") for col in df.columns
+        ]
+        print(f"   ✓ Encabezados después de limpiar: {list(df.columns[:5])}")
         
         # Validar que existe la columna UCaptura
         if 'UCaptura' not in df.columns:

@@ -648,8 +648,38 @@ class ForwardView(QWidget):
     # Métodos para actualizar UI (slots que reciben datos)
     # ================================================================
     
+    def set_client_list(self, clientes: List[str]) -> None:
+        """
+        Carga la lista de clientes en el combo box.
+        
+        Args:
+            clientes: Lista de NITs de clientes
+        """
+        print(f"[ForwardView] set_client_list: {len(clientes)} clientes")
+        
+        # Guardar selección actual si existe
+        current_text = self.cmbClientes.currentText()
+        
+        # Limpiar combo
+        self.cmbClientes.clear()
+        
+        # Agregar opción por defecto
+        self.cmbClientes.addItem("-- Seleccione un cliente --")
+        
+        # Agregar clientes
+        for nit in sorted(clientes):
+            self.cmbClientes.addItem(nit)
+        
+        # Restaurar selección si estaba en la lista
+        if current_text and current_text in clientes:
+            index = self.cmbClientes.findText(current_text)
+            if index >= 0:
+                self.cmbClientes.setCurrentIndex(index)
+        
+        print(f"   ✓ Combo de clientes actualizado con {len(clientes)} opciones")
+    
     def show_basic_info(self, patrimonio: float, trm: float,
-                       corte_415: Optional[date], estado_415: str) -> None:
+                        corte_415: Optional[date], estado_415: str) -> None:
         """
         Actualiza la información básica.
         
@@ -751,30 +781,38 @@ class ForwardView(QWidget):
         self.lblColchonInterno.setText(f"{colchon_pct:.1f}%")
         self.lblLimiteMax.setText(f"$ {limite_max:,.2f}")
     
-    def show_exposure(self, outstanding: float, total_con_simulacion: float,
-                     disponibilidad: float) -> None:
+    def show_exposure(self, outstanding: float = None, total_con_simulacion: float = None,
+                     disponibilidad: float = None) -> None:
         """
         Actualiza la información de exposición.
         
         Args:
-            outstanding: Exposición actual
-            total_con_simulacion: Exposición total con simulaciones
-            disponibilidad: Límite disponible
+            outstanding: Exposición actual (opcional)
+            total_con_simulacion: Exposición total con simulaciones (opcional)
+            disponibilidad: Límite disponible (opcional)
         """
         print(f"[ForwardView] show_exposure: outstanding={outstanding}, "
               f"total={total_con_simulacion}, disponibilidad={disponibilidad}")
         
-        self.lblOutstanding.setText(f"$ {outstanding:,.2f}")
-        self.lblOutstandingSim.setText(f"$ {total_con_simulacion:,.2f}")
-        self.lblDisponibilidad.setText(f"$ {disponibilidad:,.2f}")
+        # Actualizar solo los valores que no sean None
+        if outstanding is not None:
+            self.lblOutstanding.setText(f"$ {outstanding:,.2f}")
         
-        # Cambiar color según disponibilidad
-        if disponibilidad < 0:
-            self.lblDisponibilidad.setStyleSheet("QLabel { color: #d32f2f; font-weight: bold; }")
-        elif disponibilidad < 1000000:  # Menos de 1 millón
-            self.lblDisponibilidad.setStyleSheet("QLabel { color: #f57c00; font-weight: bold; }")
+        if total_con_simulacion is not None:
+            self.lblOutstandingSim.setText(f"$ {total_con_simulacion:,.2f}")
+        
+        if disponibilidad is not None:
+            self.lblDisponibilidad.setText(f"$ {disponibilidad:,.2f}")
+            
+            # Cambiar color según disponibilidad
+            if disponibilidad < 0:
+                self.lblDisponibilidad.setStyleSheet("QLabel { color: #d32f2f; font-weight: bold; }")
+            elif disponibilidad < 1000000:  # Menos de 1 millón
+                self.lblDisponibilidad.setStyleSheet("QLabel { color: #f57c00; font-weight: bold; }")
+            else:
+                self.lblDisponibilidad.setStyleSheet("QLabel { color: #2e7d32; font-weight: bold; }")
         else:
-            self.lblDisponibilidad.setStyleSheet("QLabel { color: #2e7d32; font-weight: bold; }")
+            self.lblDisponibilidad.setText("—")
     
     def update_chart(self, data: Dict[str, Any]) -> None:
         """

@@ -280,12 +280,17 @@ class ForwardController:
             
             # Guardar exposiciones en el modelo
             if self._data_model:
-                self._data_model.outstanding_por_cliente = exposure_by_nit
+                self._data_model.set_outstanding_por_nit(exposure_by_nit)
                 print(f"      ✓ Exposiciones calculadas para {len(exposure_by_nit)} clientes")
                 
                 # Mostrar resumen
                 total_exposure = sum(exposure_by_nit.values())
                 print(f"      ✓ Exposición total: $ {total_exposure:,.2f}")
+                
+                # Actualizar lista de clientes en la vista
+                if self._view:
+                    clientes_disponibles = self._data_model.get_clientes_disponibles()
+                    self._view.set_client_list(clientes_disponibles)
             
             print(f"      ✅ Procesamiento de operaciones completado")
             
@@ -410,11 +415,12 @@ class ForwardController:
         
         # Obtener exposición crediticia del cliente (outstanding)
         outstanding = 0.0
-        if self._data_model and nit in self._data_model.outstanding_por_cliente:
-            outstanding = self._data_model.outstanding_por_cliente[nit]
-            print(f"   → Outstanding del cliente: $ {outstanding:,.2f}")
-        else:
-            print(f"   → Sin operaciones vigentes para este cliente")
+        if self._data_model:
+            outstanding = self._data_model.get_outstanding_por_nit(nit)
+            if outstanding > 0:
+                print(f"   → Outstanding del cliente: $ {outstanding:,.2f}")
+            else:
+                print(f"   → Sin operaciones vigentes para este cliente (Outstanding: $ 0.00)")
         
         # Actualizar outstanding en la vista
         self._current_outstanding = outstanding

@@ -42,9 +42,19 @@ class ForwardDataModel:
         """
         pass
     
-    def get_outstanding(self, nit: str) -> float:
+    def set_outstanding_por_nit(self, data: Dict[str, float]) -> None:
         """
-        Obtiene el outstanding de un cliente.
+        Guarda el resultado del cálculo de exposición por contraparte.
+        
+        Args:
+            data: Diccionario con NIT -> exposición crediticia
+        """
+        self.outstanding_por_cliente = data or {}
+        print(f"[ForwardDataModel] Outstanding guardado para {len(self.outstanding_por_cliente)} clientes")
+    
+    def get_outstanding_por_nit(self, nit: str) -> float:
+        """
+        Devuelve la exposición (Outstanding) del NIT o 0.0 si no existe.
         
         Args:
             nit: NIT del cliente
@@ -52,7 +62,28 @@ class ForwardDataModel:
         Returns:
             Monto del outstanding en COP
         """
-        pass
+        return float(self.outstanding_por_cliente.get(nit, 0.0))
+    
+    def get_clientes_disponibles(self) -> List[str]:
+        """
+        Obtiene lista de todos los NITs con operaciones.
+        
+        Returns:
+            Lista de NITs
+        """
+        return list(self.outstanding_por_cliente.keys())
+    
+    def get_outstanding(self, nit: str) -> float:
+        """
+        Obtiene el outstanding de un cliente (alias de get_outstanding_por_nit).
+        
+        Args:
+            nit: NIT del cliente
+            
+        Returns:
+            Monto del outstanding en COP
+        """
+        return self.get_outstanding_por_nit(nit)
     
     def get_ops_vigentes(self, nit: str) -> List[Dict[str, Any]]:
         """
@@ -64,7 +95,7 @@ class ForwardDataModel:
         Returns:
             Lista de operaciones vigentes
         """
-        pass
+        return self.ops_vigentes_por_cliente.get(nit, [])
     
     def get_all_clients(self) -> List[str]:
         """
@@ -73,7 +104,7 @@ class ForwardDataModel:
         Returns:
             Lista de NITs
         """
-        pass
+        return self.get_clientes_disponibles()
     
     def is_415_loaded(self) -> bool:
         """
