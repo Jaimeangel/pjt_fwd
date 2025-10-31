@@ -18,13 +18,15 @@ class OperationsTableModel(QAbstractTableModel):
     
     # Headers de columnas
     HEADERS = [
-        "ID",
-        "NIT",
-        "Cliente",
-        "Divisa",
-        "Nominal",
-        "Vencimiento",
-        "Exposición"
+        "Contraparte",
+        "Deal",
+        "Operación",
+        "VNA",
+        "TRM",
+        "Derecho",
+        "Obligación",
+        "Fecha venc.",
+        "Plazo rem. (td)"
     ]
     
     def __init__(self, parent=None):
@@ -36,54 +38,8 @@ class OperationsTableModel(QAbstractTableModel):
         """
         super().__init__(parent)
         
-        # Datos dummy para testing
-        self._rows = [
-            {
-                "id": "FWD-2025-001",
-                "nit": "123456789",
-                "cliente": "Cliente Ejemplo S.A.",
-                "divisa": "USD",
-                "nominal": 100000.0,
-                "vencimiento": "2025-12-15",
-                "exposicion": 420500000.0
-            },
-            {
-                "id": "FWD-2025-002",
-                "nit": "987654321",
-                "cliente": "Corporación ABC Ltda.",
-                "divisa": "USD",
-                "nominal": 250000.0,
-                "vencimiento": "2025-11-30",
-                "exposicion": 1051250000.0
-            },
-            {
-                "id": "FWD-2025-003",
-                "nit": "555444333",
-                "cliente": "Empresa XYZ S.A.S.",
-                "divisa": "USD",
-                "nominal": 75000.0,
-                "vencimiento": "2026-01-20",
-                "exposicion": 315375000.0
-            },
-            {
-                "id": "FWD-2025-004",
-                "nit": "123456789",
-                "cliente": "Cliente Ejemplo S.A.",
-                "divisa": "USD",
-                "nominal": 150000.0,
-                "vencimiento": "2025-12-31",
-                "exposicion": 630750000.0
-            },
-            {
-                "id": "FWD-2025-005",
-                "nit": "987654321",
-                "cliente": "Corporación ABC Ltda.",
-                "divisa": "USD",
-                "nominal": 50000.0,
-                "vencimiento": "2026-02-10",
-                "exposicion": 210250000.0
-            }
-        ]
+        # Inicializar sin datos (se cargarán al seleccionar un cliente)
+        self._rows = []
     
     def rowCount(self, parent: QModelIndex = QModelIndex()) -> int:
         """
@@ -139,28 +95,49 @@ class OperationsTableModel(QAbstractTableModel):
         if role == Qt.DisplayRole:
             col = index.column()
             
-            if col == 0:  # ID
-                return row_data.get("id", "")
-            elif col == 1:  # NIT
-                return row_data.get("nit", "")
-            elif col == 2:  # Cliente
-                return row_data.get("cliente", "")
-            elif col == 3:  # Divisa
-                return row_data.get("divisa", "")
-            elif col == 4:  # Nominal
-                nominal = row_data.get("nominal", 0.0)
-                return f"{nominal:,.2f}"
-            elif col == 5:  # Vencimiento
-                return row_data.get("vencimiento", "")
-            elif col == 6:  # Exposición
-                exposicion = row_data.get("exposicion", 0.0)
-                return f"$ {exposicion:,.2f}"
+            if col == 0:  # Contraparte
+                return row_data.get("contraparte", "")
+            elif col == 1:  # Deal
+                return row_data.get("deal", "")
+            elif col == 2:  # Operación
+                return row_data.get("tipo_operacion", "")
+            elif col == 3:  # VNA
+                vna = row_data.get("vna", 0.0)
+                if vna:
+                    return f"{vna:,.2f}"
+                return ""
+            elif col == 4:  # TRM
+                trm = row_data.get("trm", 0.0)
+                if trm:
+                    return f"{trm:,.2f}"
+                return ""
+            elif col == 5:  # Derecho
+                derecho = row_data.get("vr_derecho", 0.0)
+                if derecho:
+                    return f"$ {derecho:,.2f}"
+                return ""
+            elif col == 6:  # Obligación
+                obligacion = row_data.get("vr_obligacion", 0.0)
+                if obligacion:
+                    return f"$ {obligacion:,.2f}"
+                return ""
+            elif col == 7:  # Fecha vencimiento
+                fecha = row_data.get("fecha_liquidacion", "")
+                # Formatear fecha si es datetime
+                if hasattr(fecha, 'strftime'):
+                    return fecha.strftime("%Y-%m-%d")
+                return str(fecha) if fecha else ""
+            elif col == 8:  # Plazo remanente (td)
+                td = row_data.get("td", "")
+                if td is not None and td != "":
+                    return str(int(td)) if isinstance(td, (int, float)) else str(td)
+                return ""
         
         # TextAlignmentRole: alineación de texto
         elif role == Qt.TextAlignmentRole:
             col = index.column()
             # Alinear números a la derecha
-            if col in [4, 6]:  # Nominal, Exposición
+            if col in [3, 4, 5, 6, 8]:  # VNA, TRM, Derecho, Obligación, td
                 return Qt.AlignRight | Qt.AlignVCenter
             else:
                 return Qt.AlignLeft | Qt.AlignVCenter

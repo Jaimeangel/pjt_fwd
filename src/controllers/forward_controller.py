@@ -19,7 +19,7 @@ class ForwardController:
     
     def __init__(self, data_model=None, simulations_model=None, view=None,
                  pricing_service=None, exposure_service=None, signals=None,
-                 simulations_table_model=None, client_service=None):
+                 simulations_table_model=None, operations_table_model=None, client_service=None):
         """
         Inicializa el controlador Forward.
         
@@ -31,6 +31,7 @@ class ForwardController:
             exposure_service: Instancia de ExposureService
             signals: Instancia de AppSignals (señales globales)
             simulations_table_model: Instancia de SimulationsTableModel (Qt)
+            operations_table_model: Instancia de OperationsTableModel (Qt)
             client_service: Instancia de ClientService
         """
         self._data_model = data_model
@@ -40,6 +41,7 @@ class ForwardController:
         self._exposure_service = exposure_service
         self._signals = signals
         self._simulations_table_model = simulations_table_model
+        self._operations_table_model = operations_table_model
         self._client_service = client_service
         
         # Estado actual
@@ -278,19 +280,22 @@ class ForwardController:
             print(f"      [3/3] Calculando exposición crediticia por cliente...")
             exposure_by_nit = self._calculate_credit_exposure_by_nit(df_enriched)
             
-            # Guardar exposiciones en el modelo
+            # Guardar exposiciones y operaciones en el modelo
             if self._data_model:
-                self._data_model.set_outstanding_por_nit(exposure_by_nit)
+                # Convertir DataFrame a lista de diccionarios para guardar
+                operaciones_list = df_enriched.to_dict('records')
+                self._data_model.set_datos_415(operaciones_list, exposure_by_nit)
+                
                 print(f"      ✓ Exposiciones calculadas para {len(exposure_by_nit)} clientes")
                 
                 # Mostrar resumen
                 total_exposure = sum(exposure_by_nit.values())
                 print(f"      ✓ Exposición total: $ {total_exposure:,.2f}")
                 
-                # Actualizar lista de clientes en la vista
+                # Actualizar lista de clientes en la vista (usando NOMBRES)
                 if self._view:
-                    clientes_disponibles = self._data_model.get_clientes_disponibles()
-                    self._view.set_client_list(clientes_disponibles)
+                    nombres_clientes = self._data_model.get_client_names()
+                    self._view.set_client_list(nombres_clientes)
             
             print(f"      ✅ Procesamiento de operaciones completado")
             
@@ -384,14 +389,36 @@ class ForwardController:
         
         return exposure_by_nit
     
-    def select_client(self, nit: str) -> None:
+    def select_client(self, nombre_o_nit: str) -> None:
         """
-        Selecciona un cliente.
+        Selecciona un cliente por nombre o NIT.
         
         Args:
-            nit: NIT del cliente seleccionado
+            nombre_o_nit: Nombre de la contraparte o NIT del cliente
         """
-        print(f"[ForwardController] select_client: {nit}")
+        print(f"[ForwardController] select_client: {nombre_o_nit}")
+        
+        # Intentar obtener NIT desde el nombre
+        nit = None
+        if self._data_model:
+            # Primero intentar como nombre
+            nit = self._data_model.get_nit_by_name(nombre_o_nit)
+            # Si no funciona, asumir que es NIT directamente
+            if not nit:
+                nit = nombre_o_nit
+        else:
+            nit = nombre_o_nit
+        
+        if not nit:
+            print(f"   ⚠️  No se pudo determinar el NIT para: {nombre_o_nit}")
+            # Limpiar vista
+            if self._view:
+                self._view.show_exposure(0.0, 0.0, None)
+                if self._operations_table_model:
+                    self._operations_table_model.set_operations([])
+            return
+        
+        print(f"   → NIT determinado: {nit}")
         
         # Guardar cliente actual
         self._current_client_nit = nit
@@ -441,6 +468,16 @@ class ForwardController:
                 total_con_simulacion=total_con_simulacion,
                 disponibilidad=disponibilidad
             )
+        
+        # Cargar operaciones vigentes del cliente en la tabla
+        if self._data_model and self._operations_table_model:
+            operaciones = self._data_model.get_operaciones_por_nit(nit)
+            print(f"   → Cargando {len(operaciones)} operaciones del cliente en la tabla")
+            self._operations_table_model.set_operations(operaciones)
+            
+            # Actualizar vista de la tabla
+            if self._view:
+                self._view.set_operations_table(self._operations_table_model)
         
         # Emitir señal global
         if self._signals:

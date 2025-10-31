@@ -102,6 +102,7 @@ class SimuladorForwardApp:
             exposure_service=self.exposure_service,
             signals=self.signals,
             simulations_table_model=self.main_window._simulations_model,
+            operations_table_model=self.main_window._operations_model,
             client_service=self.client_service
         )
         
