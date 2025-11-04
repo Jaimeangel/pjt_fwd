@@ -919,15 +919,23 @@ class ForwardView(QWidget):
         Args:
             model: Instancia de OperationsTableModel
         """
+        from PySide6.QtWidgets import QHeaderView, QAbstractItemView
+        
         print(f"[ForwardView] set_operations_table: {model}")
         if model:
             self.tblVigentes.setModel(model)
+            
+            # Configurar ancho proporcional uniforme para todas las columnas
+            header = self.tblVigentes.horizontalHeader()
+            header.setStretchLastSection(True)
+            header.setSectionResizeMode(QHeaderView.Stretch)  # Todas las columnas con ancho proporcional
+            
             # Configurar tabla
+            self.tblVigentes.verticalHeader().setVisible(False)
             self.tblVigentes.setAlternatingRowColors(True)
             self.tblVigentes.setSortingEnabled(True)
-            self.tblVigentes.resizeColumnsToContents()
-            # Ajustar ancho de columnas
-            self.tblVigentes.horizontalHeader().setStretchLastSection(True)
+            self.tblVigentes.setSelectionBehavior(QAbstractItemView.SelectRows)
+            self.tblVigentes.setSelectionMode(QAbstractItemView.SingleSelection)
     
     def set_simulations_table(self, model: Any) -> None:
         """
