@@ -294,11 +294,8 @@ class ForwardView(QWidget):
         lbl_cliente = QLabel("Seleccionar contraparte:")
         self.cmbClientes = QComboBox()
         self.cmbClientes.setObjectName("cmbClientes")
-        self.cmbClientes.addItem("-- Seleccione un cliente --")
-        # Agregando clientes mock con formato "NIT - Nombre"
-        self.cmbClientes.addItem("123456789 - Cliente Ejemplo S.A.")
-        self.cmbClientes.addItem("987654321 - Corporación ABC Ltda.")
-        self.cmbClientes.addItem("555444333 - Empresa XYZ S.A.S.")
+        # Iniciar vacío, sin selección
+        self.cmbClientes.setCurrentIndex(-1)
         self.cmbClientes.currentTextChanged.connect(self._on_client_combo_changed)
         card_b_layout.addWidget(lbl_cliente)
         card_b_layout.addWidget(self.cmbClientes)
@@ -369,7 +366,7 @@ class ForwardView(QWidget):
         # Outstanding (columna 0)
         lbl_out_title = QLabel("Outstanding")
         lbl_out_title.setAlignment(Qt.AlignCenter)
-        self.lblOutstanding = QLabel("$ 0.00")
+        self.lblOutstanding = QLabel("—")  # Iniciar sin valor
         self.lblOutstanding.setObjectName("lblOutstanding")
         self.lblOutstanding.setFont(font_value)
         self.lblOutstanding.setAlignment(Qt.AlignCenter)
@@ -379,7 +376,7 @@ class ForwardView(QWidget):
         # Outstanding + simulación (columna 1)
         lbl_outsim_title = QLabel("Outst. + simulación")
         lbl_outsim_title.setAlignment(Qt.AlignCenter)
-        self.lblOutstandingSim = QLabel("$ 0.00")
+        self.lblOutstandingSim = QLabel("—")  # Iniciar sin valor
         self.lblOutstandingSim.setObjectName("lblOutstandingSim")
         self.lblOutstandingSim.setFont(font_value)
         self.lblOutstandingSim.setAlignment(Qt.AlignCenter)
@@ -389,7 +386,7 @@ class ForwardView(QWidget):
         # Disponibilidad (columna 2)
         lbl_disp_title = QLabel("Disponibilidad de línea")
         lbl_disp_title.setAlignment(Qt.AlignCenter)
-        self.lblDisponibilidad = QLabel("$ 0.00")
+        self.lblDisponibilidad = QLabel("—")  # Iniciar sin valor
         self.lblDisponibilidad.setObjectName("lblDisponibilidad")
         self.lblDisponibilidad.setFont(font_value)
         self.lblDisponibilidad.setAlignment(Qt.AlignCenter)
@@ -708,33 +705,30 @@ class ForwardView(QWidget):
     
     def set_client_list(self, clientes: List[str]) -> None:
         """
-        Carga la lista de clientes en el combo box.
+        Carga la lista de clientes en el combo box sin seleccionar automáticamente.
         
         Args:
-            clientes: Lista de NITs de clientes
+            clientes: Lista de nombres de clientes
         """
         print(f"[ForwardView] set_client_list: {len(clientes)} clientes")
         
-        # Guardar selección actual si existe
-        current_text = self.cmbClientes.currentText()
+        # Bloquear señales para evitar triggers automáticos
+        self.cmbClientes.blockSignals(True)
         
         # Limpiar combo
         self.cmbClientes.clear()
         
-        # Agregar opción por defecto
-        self.cmbClientes.addItem("-- Seleccione un cliente --")
-        
         # Agregar clientes
-        for nit in sorted(clientes):
-            self.cmbClientes.addItem(nit)
+        for nombre in sorted(clientes):
+            self.cmbClientes.addItem(nombre)
         
-        # Restaurar selección si estaba en la lista
-        if current_text and current_text in clientes:
-            index = self.cmbClientes.findText(current_text)
-            if index >= 0:
-                self.cmbClientes.setCurrentIndex(index)
+        # NO seleccionar automáticamente ningún cliente
+        self.cmbClientes.setCurrentIndex(-1)
         
-        print(f"   ✓ Combo de clientes actualizado con {len(clientes)} opciones")
+        # Desbloquear señales
+        self.cmbClientes.blockSignals(False)
+        
+        print(f"   ✓ Combo de clientes actualizado con {len(clientes)} opciones (sin selección)")
     
     def show_basic_info(self, patrimonio: float, trm: float,
                         corte_415: Optional[date], estado_415: str) -> None:
@@ -855,9 +849,14 @@ class ForwardView(QWidget):
         # Actualizar solo los valores que no sean None
         if outstanding is not None:
             self.lblOutstanding.setText(f"$ {outstanding:,.2f}")
+        else:
+            self.lblOutstanding.setText("—")
         
+        # Outstanding + simulación: solo mostrar si se proporcionó un valor
         if total_con_simulacion is not None:
             self.lblOutstandingSim.setText(f"$ {total_con_simulacion:,.2f}")
+        else:
+            self.lblOutstandingSim.setText("—")  # No igualar al Outstanding
         
         if disponibilidad is not None:
             self.lblDisponibilidad.setText(f"$ {disponibilidad:,.2f}")

@@ -531,7 +531,7 @@ class ForwardController:
             print(f"   ⚠️  No se pudo determinar el NIT para: {nombre_o_nit}")
             # Limpiar vista
             if self._view:
-                self._view.show_exposure(0.0, 0.0, None)
+                self._view.show_exposure(outstanding=0.0, total_con_simulacion=None, disponibilidad=None)
                 if self._operations_table_model:
                     self._operations_table_model.set_operations([])
             return
@@ -576,20 +576,12 @@ class ForwardController:
         self._current_outstanding = outstanding
         
         if self._view:
-            # Calcular total con simulación (por ahora solo outstanding)
-            total_con_simulacion = outstanding
-            
-            # Calcular disponibilidad
-            disponibilidad = 0.0
-            if self._client_service:
-                limits = self._client_service.get_client_limits(nit)
-                disponibilidad = limits['limite_max'] - total_con_simulacion
-            
-            # Actualizar exposición en la vista
+            # Solo mostrar Outstanding; NO igualar OutstandingSim aquí
+            # OutstandingSim se actualiza únicamente al pulsar "Simular"
             self._view.show_exposure(
                 outstanding=outstanding,
-                total_con_simulacion=total_con_simulacion,
-                disponibilidad=disponibilidad
+                total_con_simulacion=None,  # Dejar en "—" hasta simular
+                disponibilidad=None
             )
         
         # Cargar operaciones vigentes del cliente en la tabla
