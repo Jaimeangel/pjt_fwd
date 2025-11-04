@@ -7,8 +7,8 @@ from typing import Optional, List, Dict, Any
 from datetime import date
 from PySide6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QGridLayout,
-    QPushButton, QLabel, QLineEdit, QComboBox, QTableView,
-    QGroupBox, QFrame, QToolBar, QCheckBox, QSplitter
+    QPushButton, QLabel, QComboBox, QTableView,
+    QGroupBox, QFrame, QSplitter, QSizePolicy
 )
 from PySide6.QtCore import Signal, Qt
 from PySide6.QtGui import QFont
@@ -27,11 +27,11 @@ class ForwardView(QWidget):
     
     # Señales que emite la vista (events que van al controller)
     load_415_requested = Signal(str)           # file_path
+    load_ibr_requested = Signal(str)           # file_path
     client_selected = Signal(str)              # nit
     add_simulation_requested = Signal()
-    duplicate_simulation_requested = Signal(int)      # row
     delete_simulations_requested = Signal(list)       # rows
-    run_simulations_requested = Signal()
+    simulate_selected_requested = Signal()            # simular fila seleccionada
     save_simulations_requested = Signal(list)         # rows
     
     def __init__(self, parent=None):
@@ -45,15 +45,21 @@ class ForwardView(QWidget):
         
         # Referencias a widgets principales (se crean en _setup_ui)
         self.btnLoad415 = None
+        self.btnLoadIBR = None
         self.lblTituloForward = None
         self.lblFechaCorte415 = None
         self.lblEstado415 = None
         self.lblArchivo415 = None
         
+        # Referencias para banner IBR
+        self.lblArchivoIBR = None
+        self.lblTamanoIBR = None
+        self.lblFechaIBR = None
+        self.lblEstadoIBR = None
+        
         self.lblPatrimonio = None
         self.lblTRM = None
         self.cmbClientes = None
-        self.txtBuscarCliente = None
         
         self.lblLineaCredito = None
         self.lblColchonInterno = None
@@ -65,17 +71,15 @@ class ForwardView(QWidget):
         self.chartContainer = None
         
         self.btnAddSim = None
-        self.btnDupSim = None
         self.btnDelSim = None
-        self.btnRunAll = None
+        self.btnRun = None
         self.btnSaveSel = None
         self.tblSimulaciones = None
         
-        self.txtFiltroVigentes = None
-        self.chkIncluirCalculo = None
         self.tblVigentes = None
         
         self.banner415 = None
+        self.bannerIBR = None
         
         self._setup_ui()
     
@@ -83,7 +87,7 @@ class ForwardView(QWidget):
         """Configura la interfaz de usuario completa."""
         # Layout principal vertical
         main_layout = QVBoxLayout(self)
-        main_layout.setSpacing(10)
+        main_layout.setSpacing(6)
         main_layout.setContentsMargins(15, 15, 15, 15)
         
         # 1. Header
@@ -92,6 +96,10 @@ class ForwardView(QWidget):
         # 2. Banner estado 415
         self.banner415 = self._create_banner_415()
         main_layout.addWidget(self.banner415)
+        
+        # 2b. Banner estado IBR
+        self.bannerIBR = self._create_banner_ibr()
+        main_layout.addWidget(self.bannerIBR)
         
         # 3. Panel superior con 3 columnas
         main_layout.addWidget(self._create_upper_panel())
@@ -134,6 +142,13 @@ class ForwardView(QWidget):
         
         header_layout.addStretch()
         
+        # Botón Cargar IBR
+        self.btnLoadIBR = QPushButton("Cargar IBR")
+        self.btnLoadIBR.setObjectName("btnLoadIBR")
+        self.btnLoadIBR.setMinimumWidth(120)
+        self.btnLoadIBR.clicked.connect(self._on_load_ibr_button_clicked)
+        header_layout.addWidget(self.btnLoadIBR)
+        
         # Botón Cargar 415
         self.btnLoad415 = QPushButton("Cargar 415")
         self.btnLoad415.setObjectName("btnLoad415")
@@ -167,12 +182,56 @@ class ForwardView(QWidget):
         
         return banner
     
+    def _create_banner_ibr(self) -> QFrame:
+        """Crea el banner de estado del archivo IBR."""
+        banner = QFrame()
+        banner.setObjectName("bannerIBR")
+        banner.setFrameShape(QFrame.StyledPanel)
+        banner.setStyleSheet(
+            "QFrame#bannerIBR { background-color: #f0f4f8; border: 1px solid #d1d9e0; "
+            "border-radius: 4px; padding: 8px; }"
+        )
+        
+        banner_layout = QHBoxLayout(banner)
+        banner_layout.setSpacing(15)
+        
+        # Label de archivo
+        self.lblArchivoIBR = QLabel("Archivo: —")
+        self.lblArchivoIBR.setObjectName("lblArchivoIBR")
+        banner_layout.addWidget(self.lblArchivoIBR)
+        
+        # Label de tamaño
+        self.lblTamanoIBR = QLabel("Tamaño: —")
+        self.lblTamanoIBR.setObjectName("lblTamanoIBR")
+        banner_layout.addWidget(self.lblTamanoIBR)
+        
+        # Label de fecha
+        self.lblFechaIBR = QLabel("Fecha: —")
+        self.lblFechaIBR.setObjectName("lblFechaIBR")
+        banner_layout.addWidget(self.lblFechaIBR)
+        
+        banner_layout.addStretch()
+        
+        # Badge de estado
+        self.lblEstadoIBR = QLabel("—")
+        self.lblEstadoIBR.setObjectName("lblEstadoIBR")
+        self.lblEstadoIBR.setStyleSheet(
+            "QLabel { background-color: #999; color: white; "
+            "padding: 4px 12px; border-radius: 3px; }"
+        )
+        banner_layout.addWidget(self.lblEstadoIBR)
+        
+        # Inicialmente oculto
+        banner.setVisible(False)
+        
+        return banner
+    
     def _create_upper_panel(self) -> QWidget:
         """Crea el panel superior con 3 columnas de cards."""
         panel_widget = QWidget()
         panel_layout = QHBoxLayout(panel_widget)
         panel_layout.setSpacing(15)
-        panel_layout.setContentsMargins(0, 0, 0, 0)
+        panel_layout.setContentsMargins(0, 0, 0, 6)
         
         # Columna 1: Contexto
         panel_layout.addWidget(self._create_column_1(), stretch=1)
@@ -194,47 +253,45 @@ class ForwardView(QWidget):
         
         # Card A: Información básica
         card_a = self._create_card("Información básica")
-        card_a_layout = QVBoxLayout()
+        card_a_layout = QGridLayout()
+        card_a_layout.setSpacing(8)
+        card_a_layout.setContentsMargins(10, 10, 10, 10)
         
-        # Patrimonio técnico
-        lbl_pat_title = QLabel("Patrimonio técnico vigente:")
-        self.lblPatrimonio = QLabel("$ 0.00")
-        self.lblPatrimonio.setObjectName("lblPatrimonio")
         font_value = QFont()
         font_value.setBold(True)
+        
+        # Patrimonio técnico (columna 0)
+        lbl_pat_title = QLabel("Patrimonio técnico vigente")
+        lbl_pat_title.setAlignment(Qt.AlignCenter)
+        self.lblPatrimonio = QLabel("$ 0.00")
+        self.lblPatrimonio.setObjectName("lblPatrimonio")
         self.lblPatrimonio.setFont(font_value)
-        card_a_layout.addWidget(lbl_pat_title)
-        card_a_layout.addWidget(self.lblPatrimonio)
+        self.lblPatrimonio.setAlignment(Qt.AlignCenter)
+        card_a_layout.addWidget(lbl_pat_title, 0, 0)
+        card_a_layout.addWidget(self.lblPatrimonio, 1, 0)
         
-        card_a_layout.addSpacing(10)
-        
-        # TRM vigente
-        lbl_trm_title = QLabel("TRM vigente:")
+        # TRM vigente (columna 1)
+        lbl_trm_title = QLabel("TRM vigente")
+        lbl_trm_title.setAlignment(Qt.AlignCenter)
         self.lblTRM = QLabel("$ 0.00")
         self.lblTRM.setObjectName("lblTRM")
         self.lblTRM.setFont(font_value)
-        card_a_layout.addWidget(lbl_trm_title)
-        card_a_layout.addWidget(self.lblTRM)
+        self.lblTRM.setAlignment(Qt.AlignCenter)
+        card_a_layout.addWidget(lbl_trm_title, 0, 1)
+        card_a_layout.addWidget(self.lblTRM, 1, 1)
         
         card_a.setLayout(card_a_layout)
+        card_a.setMaximumHeight(120)
         column_layout.addWidget(card_a)
         
         # Card B: Cliente
         card_b = self._create_card("Cliente")
         card_b_layout = QVBoxLayout()
+        card_b_layout.setSpacing(8)
+        card_b_layout.setContentsMargins(10, 10, 10, 10)
         
-        # Búsqueda de cliente
-        lbl_buscar = QLabel("Buscar cliente:")
-        self.txtBuscarCliente = QLineEdit()
-        self.txtBuscarCliente.setObjectName("txtBuscarCliente")
-        self.txtBuscarCliente.setPlaceholderText("Buscar por NIT o nombre...")
-        card_b_layout.addWidget(lbl_buscar)
-        card_b_layout.addWidget(self.txtBuscarCliente)
-        
-        card_b_layout.addSpacing(5)
-        
-        # ComboBox de clientes
-        lbl_cliente = QLabel("Seleccionar cliente:")
+        # ComboBox de clientes (sin campo de búsqueda)
+        lbl_cliente = QLabel("Seleccionar contraparte:")
         self.cmbClientes = QComboBox()
         self.cmbClientes.setObjectName("cmbClientes")
         self.cmbClientes.addItem("-- Seleccione un cliente --")
@@ -262,75 +319,86 @@ class ForwardView(QWidget):
         
         # Card C: Parámetros de crédito
         card_c = self._create_card("Parámetros de crédito")
-        card_c_layout = QVBoxLayout()
+        card_c_layout = QGridLayout()
+        card_c_layout.setSpacing(8)
+        card_c_layout.setContentsMargins(10, 10, 10, 10)
         
-        # Línea de crédito
-        lbl_linea_title = QLabel("Línea de crédito:")
-        self.lblLineaCredito = QLabel("$ 0.00")
-        self.lblLineaCredito.setObjectName("lblLineaCredito")
         font_value = QFont()
         font_value.setBold(True)
+        
+        # Línea de crédito (columna 0)
+        lbl_linea_title = QLabel("Línea de crédito")
+        lbl_linea_title.setAlignment(Qt.AlignCenter)
+        self.lblLineaCredito = QLabel("$ 0.00")
+        self.lblLineaCredito.setObjectName("lblLineaCredito")
         self.lblLineaCredito.setFont(font_value)
-        card_c_layout.addWidget(lbl_linea_title)
-        card_c_layout.addWidget(self.lblLineaCredito)
+        self.lblLineaCredito.setAlignment(Qt.AlignCenter)
+        card_c_layout.addWidget(lbl_linea_title, 0, 0)
+        card_c_layout.addWidget(self.lblLineaCredito, 1, 0)
         
-        card_c_layout.addSpacing(8)
-        
-        # Colchón interno
-        lbl_colchon_title = QLabel("Colchón interno:")
+        # Colchón interno (columna 1)
+        lbl_colchon_title = QLabel("Colchón interno")
+        lbl_colchon_title.setAlignment(Qt.AlignCenter)
         self.lblColchonInterno = QLabel("0.0%")
         self.lblColchonInterno.setObjectName("lblColchonInterno")
         self.lblColchonInterno.setFont(font_value)
-        card_c_layout.addWidget(lbl_colchon_title)
-        card_c_layout.addWidget(self.lblColchonInterno)
+        self.lblColchonInterno.setAlignment(Qt.AlignCenter)
+        card_c_layout.addWidget(lbl_colchon_title, 0, 1)
+        card_c_layout.addWidget(self.lblColchonInterno, 1, 1)
         
-        card_c_layout.addSpacing(8)
-        
-        # Límite máximo
-        lbl_limite_title = QLabel("Límite máximo permitido:")
+        # Límite máximo (columna 2)
+        lbl_limite_title = QLabel("Límite máximo permitido")
+        lbl_limite_title.setAlignment(Qt.AlignCenter)
         self.lblLimiteMax = QLabel("$ 0.00")
         self.lblLimiteMax.setObjectName("lblLimiteMax")
         self.lblLimiteMax.setFont(font_value)
-        card_c_layout.addWidget(lbl_limite_title)
-        card_c_layout.addWidget(self.lblLimiteMax)
+        self.lblLimiteMax.setAlignment(Qt.AlignCenter)
+        card_c_layout.addWidget(lbl_limite_title, 0, 2)
+        card_c_layout.addWidget(self.lblLimiteMax, 1, 2)
         
         card_c.setLayout(card_c_layout)
+        card_c.setMaximumHeight(120)
         column_layout.addWidget(card_c)
         
         # Card D: Exposición
         card_d = self._create_card("Exposición")
-        card_d_layout = QVBoxLayout()
+        card_d_layout = QGridLayout()
+        card_d_layout.setSpacing(8)
+        card_d_layout.setContentsMargins(10, 10, 10, 10)
         
-        # Outstanding
-        lbl_out_title = QLabel("Outstanding:")
+        # Outstanding (columna 0)
+        lbl_out_title = QLabel("Outstanding")
+        lbl_out_title.setAlignment(Qt.AlignCenter)
         self.lblOutstanding = QLabel("$ 0.00")
         self.lblOutstanding.setObjectName("lblOutstanding")
         self.lblOutstanding.setFont(font_value)
-        card_d_layout.addWidget(lbl_out_title)
-        card_d_layout.addWidget(self.lblOutstanding)
+        self.lblOutstanding.setAlignment(Qt.AlignCenter)
+        card_d_layout.addWidget(lbl_out_title, 0, 0)
+        card_d_layout.addWidget(self.lblOutstanding, 1, 0)
         
-        card_d_layout.addSpacing(8)
-        
-        # Outstanding + simulación
-        lbl_outsim_title = QLabel("Outstanding + simulación:")
+        # Outstanding + simulación (columna 1)
+        lbl_outsim_title = QLabel("Outst. + simulación")
+        lbl_outsim_title.setAlignment(Qt.AlignCenter)
         self.lblOutstandingSim = QLabel("$ 0.00")
         self.lblOutstandingSim.setObjectName("lblOutstandingSim")
         self.lblOutstandingSim.setFont(font_value)
-        card_d_layout.addWidget(lbl_outsim_title)
-        card_d_layout.addWidget(self.lblOutstandingSim)
+        self.lblOutstandingSim.setAlignment(Qt.AlignCenter)
+        card_d_layout.addWidget(lbl_outsim_title, 0, 1)
+        card_d_layout.addWidget(self.lblOutstandingSim, 1, 1)
         
-        card_d_layout.addSpacing(8)
-        
-        # Disponibilidad
-        lbl_disp_title = QLabel("Disponibilidad de línea:")
+        # Disponibilidad (columna 2)
+        lbl_disp_title = QLabel("Disponibilidad de línea")
+        lbl_disp_title.setAlignment(Qt.AlignCenter)
         self.lblDisponibilidad = QLabel("$ 0.00")
         self.lblDisponibilidad.setObjectName("lblDisponibilidad")
         self.lblDisponibilidad.setFont(font_value)
-        self.lblDisponibilidad.setStyleSheet("QLabel { color: #2e7d32; }")
-        card_d_layout.addWidget(lbl_disp_title)
-        card_d_layout.addWidget(self.lblDisponibilidad)
+        self.lblDisponibilidad.setAlignment(Qt.AlignCenter)
+        self.lblDisponibilidad.setStyleSheet("QLabel { color: #2e7d32; font-weight: bold; }")
+        card_d_layout.addWidget(lbl_disp_title, 0, 2)
+        card_d_layout.addWidget(self.lblDisponibilidad, 1, 2)
         
         card_d.setLayout(card_d_layout)
+        card_d.setMaximumHeight(120)
         column_layout.addWidget(card_d)
         
         column_layout.addStretch()
@@ -390,52 +458,57 @@ class ForwardView(QWidget):
         return splitter
     
     def _create_simulations_section(self) -> QWidget:
-        """Crea la sección de simulaciones con toolbar y tabla."""
+        """Crea la sección de simulaciones con título y botones en la misma línea."""
         section = QWidget()
         section_layout = QVBoxLayout(section)
-        section_layout.setSpacing(8)
-        section_layout.setContentsMargins(0, 5, 0, 5)
+        section_layout.setSpacing(6)
+        section_layout.setContentsMargins(0, 2, 0, 5)
         
-        # Título
+        # Barra de título con botones (en la misma línea)
+        title_bar = QHBoxLayout()
+        title_bar.setSpacing(12)
+        
+        # Título a la izquierda
         lbl_title = QLabel("Simulaciones Forward")
         font_title = QFont()
         font_title.setPointSize(11)
         font_title.setBold(True)
         lbl_title.setFont(font_title)
-        section_layout.addWidget(lbl_title)
+        title_bar.addWidget(lbl_title)
         
-        # Toolbar
-        toolbar = QToolBar()
-        toolbar.setMovable(False)
+        # Separador vertical
+        separator = QFrame()
+        separator.setFrameShape(QFrame.VLine)
+        separator.setFrameShadow(QFrame.Sunken)
+        title_bar.addWidget(separator)
         
+        # Botones a la derecha
         self.btnAddSim = QPushButton("➕ Agregar fila")
         self.btnAddSim.setObjectName("btnAddSim")
         self.btnAddSim.clicked.connect(self.on_add_simulation_row)
-        toolbar.addWidget(self.btnAddSim)
-        
-        self.btnDupSim = QPushButton("📋 Duplicar")
-        self.btnDupSim.setObjectName("btnDupSim")
-        self.btnDupSim.clicked.connect(self._on_duplicate_button_clicked)
-        toolbar.addWidget(self.btnDupSim)
+        title_bar.addWidget(self.btnAddSim)
         
         self.btnDelSim = QPushButton("🗑️ Eliminar")
         self.btnDelSim.setObjectName("btnDelSim")
         self.btnDelSim.clicked.connect(self._on_delete_button_clicked)
-        toolbar.addWidget(self.btnDelSim)
+        title_bar.addWidget(self.btnDelSim)
         
-        toolbar.addSeparator()
+        # Pequeño espaciador entre botones de gestión y acción
+        title_bar.addSpacing(10)
         
-        self.btnRunAll = QPushButton("▶️ Simular todo")
-        self.btnRunAll.setObjectName("btnRunAll")
-        self.btnRunAll.clicked.connect(self.on_run_simulations)
-        toolbar.addWidget(self.btnRunAll)
+        self.btnRun = QPushButton("▶️ Simular")
+        self.btnRun.setObjectName("btnRun")
+        self.btnRun.clicked.connect(self._on_run_button_clicked)
+        title_bar.addWidget(self.btnRun)
         
         self.btnSaveSel = QPushButton("💾 Guardar selección")
         self.btnSaveSel.setObjectName("btnSaveSel")
         self.btnSaveSel.clicked.connect(self._on_save_button_clicked)
-        toolbar.addWidget(self.btnSaveSel)
+        title_bar.addWidget(self.btnSaveSel)
         
-        section_layout.addWidget(toolbar)
+        title_bar.addStretch()
+        
+        section_layout.addLayout(title_bar)
         
         # Tabla de simulaciones
         self.tblSimulaciones = QTableView()
@@ -444,6 +517,7 @@ class ForwardView(QWidget):
         self.tblSimulaciones.setSortingEnabled(True)
         self.tblSimulaciones.setSelectionBehavior(QTableView.SelectRows)
         self.tblSimulaciones.setSelectionMode(QTableView.ExtendedSelection)
+        self.tblSimulaciones.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
         section_layout.addWidget(self.tblSimulaciones)
         
         return section
@@ -463,30 +537,7 @@ class ForwardView(QWidget):
         lbl_title.setFont(font_title)
         section_layout.addWidget(lbl_title)
         
-        # Filtros
-        filters_layout = QHBoxLayout()
-        
-        lbl_filtro = QLabel("Filtrar:")
-        filters_layout.addWidget(lbl_filtro)
-        
-        self.txtFiltroVigentes = QLineEdit()
-        self.txtFiltroVigentes.setObjectName("txtFiltroVigentes")
-        self.txtFiltroVigentes.setPlaceholderText("Buscar en operaciones vigentes...")
-        self.txtFiltroVigentes.setMaximumWidth(300)
-        filters_layout.addWidget(self.txtFiltroVigentes)
-        
-        filters_layout.addSpacing(20)
-        
-        self.chkIncluirCalculo = QCheckBox("Incluir en cálculo")
-        self.chkIncluirCalculo.setObjectName("chkIncluirCalculo")
-        self.chkIncluirCalculo.setChecked(True)
-        filters_layout.addWidget(self.chkIncluirCalculo)
-        
-        filters_layout.addStretch()
-        
-        section_layout.addLayout(filters_layout)
-        
-        # Tabla de operaciones vigentes
+        # Tabla de operaciones vigentes (sin filtros)
         self.tblVigentes = QTableView()
         self.tblVigentes.setObjectName("tblVigentes")
         self.tblVigentes.setAlternatingRowColors(True)
@@ -557,14 +608,21 @@ class ForwardView(QWidget):
         if file_path:
             self.on_load_415_clicked(file_path)
     
-    def _on_duplicate_button_clicked(self):
-        """Handler interno para duplicar simulación."""
-        selected = self.tblSimulaciones.selectedIndexes()
-        if selected:
-            row = selected[0].row()
-            self.on_duplicate_simulation_row(row)
-        else:
-            print("[ForwardView] No hay fila seleccionada para duplicar")
+    def _on_load_ibr_button_clicked(self):
+        """Handler interno para el botón Cargar IBR."""
+        from PySide6.QtWidgets import QFileDialog
+        
+        # Abrir diálogo de selección de archivo
+        file_path, _ = QFileDialog.getOpenFileName(
+            self,
+            "Seleccionar archivo IBR",
+            "",
+            "Archivos CSV (*.csv);;Todos los archivos (*.*)"
+        )
+        
+        # Si se seleccionó un archivo, emitir señal
+        if file_path:
+            self.on_load_ibr_clicked(file_path)
     
     def _on_delete_button_clicked(self):
         """Handler interno para eliminar simulaciones."""
@@ -573,6 +631,11 @@ class ForwardView(QWidget):
             self.on_delete_simulation_rows(selected_rows)
         else:
             print("[ForwardView] No hay filas seleccionadas para eliminar")
+    
+    def _on_run_button_clicked(self):
+        """Handler interno para simular fila seleccionada."""
+        print("[ForwardView] _on_run_button_clicked")
+        self.simulate_selected_requested.emit()
     
     def _on_save_button_clicked(self):
         """Handler interno para guardar simulaciones."""
@@ -594,6 +657,16 @@ class ForwardView(QWidget):
         print(f"[ForwardView] on_load_415_clicked: {file_path}")
         self.load_415_requested.emit(file_path)
     
+    def on_load_ibr_clicked(self, file_path: str) -> None:
+        """
+        Maneja el clic en botón cargar IBR.
+        
+        Args:
+            file_path: Ruta del archivo IBR seleccionado
+        """
+        print(f"[ForwardView] on_load_ibr_clicked: {file_path}")
+        self.load_ibr_requested.emit(file_path)
+    
     def on_client_selected(self, nit: str) -> None:
         """
         Maneja la selección de cliente.
@@ -609,16 +682,6 @@ class ForwardView(QWidget):
         print("[ForwardView] on_add_simulation_row")
         self.add_simulation_requested.emit()
     
-    def on_duplicate_simulation_row(self, row: int) -> None:
-        """
-        Maneja el clic en duplicar fila.
-        
-        Args:
-            row: Índice de la fila a duplicar
-        """
-        print(f"[ForwardView] on_duplicate_simulation_row: {row}")
-        self.duplicate_simulation_requested.emit(row)
-    
     def on_delete_simulation_rows(self, rows: List[int]) -> None:
         """
         Maneja el clic en eliminar filas.
@@ -628,11 +691,6 @@ class ForwardView(QWidget):
         """
         print(f"[ForwardView] on_delete_simulation_rows: {rows}")
         self.delete_simulations_requested.emit(rows)
-    
-    def on_run_simulations(self) -> None:
-        """Maneja el clic en ejecutar simulaciones."""
-        print("[ForwardView] on_run_simulations")
-        self.run_simulations_requested.emit()
     
     def on_save_selected_simulations(self, rows: List[int]) -> None:
         """
@@ -882,12 +940,116 @@ class ForwardView(QWidget):
         print(f"[ForwardView] set_simulations_table: {model}")
         if model:
             self.tblSimulaciones.setModel(model)
-            # Configurar tabla
+            
+            # Configurar delegates personalizados
+            from src.views.simulations_delegates import PuntaClienteDelegate, FechaDelegate
+            
+            # Delegate para "Punta Cli" (columna 1)
+            punta_col_idx = model.get_column_index("Punta Cli")
+            if punta_col_idx >= 0:
+                self.tblSimulaciones.setItemDelegateForColumn(
+                    punta_col_idx, 
+                    PuntaClienteDelegate(self.tblSimulaciones)
+                )
+                print(f"   ✓ Delegate configurado para columna 'Punta Cli' (índice {punta_col_idx})")
+            
+            # Delegate para "Fec Venc" (columna 5)
+            fecha_col_idx = model.get_column_index("Fec Venc")
+            if fecha_col_idx >= 0:
+                self.tblSimulaciones.setItemDelegateForColumn(
+                    fecha_col_idx,
+                    FechaDelegate(self.tblSimulaciones)
+                )
+                print(f"   ✓ Delegate configurado para columna 'Fec Venc' (índice {fecha_col_idx})")
+            
+            # Configurar tabla con distribución uniforme de columnas
+            from PySide6.QtWidgets import QHeaderView, QAbstractItemView
+            
             self.tblSimulaciones.setAlternatingRowColors(True)
             self.tblSimulaciones.setSortingEnabled(True)
-            self.tblSimulaciones.resizeColumnsToContents()
-            # Ajustar ancho de columnas
+            self.tblSimulaciones.setSelectionBehavior(QAbstractItemView.SelectRows)
+            
+            # Distribución uniforme de columnas
             self.tblSimulaciones.horizontalHeader().setStretchLastSection(True)
+            self.tblSimulaciones.horizontalHeader().setSectionResizeMode(QHeaderView.Stretch)
+            
+            # Ocultar números de fila verticales
+            self.tblSimulaciones.verticalHeader().setVisible(False)
+    
+    def update_ibr_status(
+        self,
+        file_path: Optional[str],
+        estado: str,
+        tamano_kb: Optional[float] = None,
+        timestamp: Optional[str] = None
+    ) -> None:
+        """
+        Actualiza el banner con información del archivo IBR.
+        
+        Args:
+            file_path: Ruta del archivo (None si inválido)
+            estado: Estado del archivo ("Cargado" o "Inválido")
+            tamano_kb: Tamaño en KB (opcional)
+            timestamp: Fecha/hora de cargue (opcional)
+        """
+        from pathlib import Path
+        
+        # Obtener nombre del archivo
+        if file_path:
+            nombre = Path(file_path).name
+        else:
+            nombre = "—"
+        
+        # Actualizar labels
+        self.lblArchivoIBR.setText(f"Archivo: {nombre}")
+        
+        if tamano_kb is not None:
+            self.lblTamanoIBR.setText(f"Tamaño: {tamano_kb:.2f} KB")
+        else:
+            self.lblTamanoIBR.setText("Tamaño: —")
+        
+        if timestamp:
+            self.lblFechaIBR.setText(f"Fecha: {timestamp}")
+        else:
+            self.lblFechaIBR.setText("Fecha: —")
+        
+        # Actualizar badge de estado
+        if estado == "Cargado":
+            self.lblEstadoIBR.setText("✅ Cargado")
+            self.lblEstadoIBR.setStyleSheet(
+                "QLabel { background-color: #4caf50; color: white; "
+                "padding: 4px 12px; border-radius: 3px; }"
+            )
+            color_fondo = "#e8f5e9"  # Verde claro
+        else:
+            self.lblEstadoIBR.setText("⛔ Inválido")
+            self.lblEstadoIBR.setStyleSheet(
+                "QLabel { background-color: #f44336; color: white; "
+                "padding: 4px 12px; border-radius: 3px; }"
+            )
+            color_fondo = "#ffebee"  # Rojo claro
+        
+        # Aplicar color de fondo al banner
+        if self.bannerIBR:
+            self.bannerIBR.setStyleSheet(
+                f"QFrame#bannerIBR {{ background-color: {color_fondo}; "
+                f"border: 1px solid #d1d9e0; border-radius: 4px; padding: 8px; }}"
+            )
+            # Mostrar el banner
+            self.bannerIBR.setVisible(True)
+        
+        print(f"[ForwardView] update_ibr_status: {nombre} | {estado} | {tamano_kb} KB | {timestamp}")
+    
+    def get_selected_simulation_index(self):
+        """
+        Obtiene el índice de la fila seleccionada en la tabla de simulaciones.
+        
+        Returns:
+            QModelIndex de la fila seleccionada, o QModelIndex inválido si no hay selección
+        """
+        from PySide6.QtCore import QModelIndex
+        sm = self.tblSimulaciones.selectionModel()
+        return sm.currentIndex() if sm else QModelIndex()
     
     def notify(self, message: str, level: str) -> None:
         """

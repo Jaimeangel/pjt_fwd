@@ -38,6 +38,27 @@ class ForwardDataModel:
         self.nit_to_nombre: Dict[str, str] = {}
         self.nombre_to_nit: Dict[str, str] = {}
         self.operaciones_por_nit: Dict[str, List[Dict[str, Any]]] = {}
+        
+        # Cliente actual seleccionado
+        self.current_nit: Optional[str] = None
+        self.current_nombre: Optional[str] = None
+        
+        # Factor de conversión global (si no hay específico por cliente)
+        self.fc_global: float = 0.0
+        
+        # Factores de conversión por cliente (si aplica)
+        self.fc_por_nit: Dict[str, float] = {}
+        
+        # Curva IBR
+        self.ibr_curve: Dict[int, float] = {}  # {dias: tasa_decimal}
+        self.ibr_loaded: bool = False
+        self.ibr_file_path: Optional[str] = None
+        
+        # Metadatos del archivo IBR
+        self.ibr_nombre: Optional[str] = None
+        self.ibr_tamano_kb: Optional[float] = None
+        self.ibr_timestamp: Optional[str] = None
+        self.ibr_estado: str = "—"
     
     def load_415(self, file_path: str) -> None:
         """
@@ -167,6 +188,53 @@ class ForwardDataModel:
         """
         return self.operaciones_por_nit.get(nit, [])
     
+    def get_current_client_nit(self) -> Optional[str]:
+        """
+        Obtiene el NIT del cliente actualmente seleccionado.
+        
+        Returns:
+            NIT del cliente actual o None
+        """
+        return self.current_nit
+    
+    def get_current_client_name(self) -> Optional[str]:
+        """
+        Obtiene el nombre del cliente actualmente seleccionado.
+        
+        Returns:
+            Nombre del cliente actual o None
+        """
+        return self.current_nombre
+    
+    def set_current_client(self, nit: str, nombre: Optional[str] = None) -> None:
+        """
+        Establece el cliente actualmente seleccionado.
+        
+        Args:
+            nit: NIT del cliente
+            nombre: Nombre del cliente (opcional, se resuelve si no se proporciona)
+        """
+        self.current_nit = nit
+        if nombre:
+            self.current_nombre = nombre
+        else:
+            self.current_nombre = self.get_nombre_by_nit(nit)
+    
+    def get_fc_for_nit(self, nit: str) -> float:
+        """
+        Obtiene el factor de conversión (82FC) aplicable a una contraparte.
+        
+        Si no existe un fc específico para el NIT, devuelve el fc global.
+        Si no hay fc global, devuelve 0.0.
+        
+        Args:
+            nit: NIT del cliente
+            
+        Returns:
+            Factor de conversión (fc)
+        """
+        return self.fc_por_nit.get(nit, self.fc_global)
+    
     def get_outstanding(self, nit: str) -> float:
         """
         Obtiene el outstanding de un cliente (alias de get_outstanding_por_nit).
@@ -262,6 +330,74 @@ class ForwardDataModel:
         self.tamano_415_kb = 0.0
         self.hash_415 = None
         self.timestamp_cargue = None
-        self.outstanding_por_cliente.clear()
-        self.ops_vigentes_por_cliente.clear()
+    
+    def set_ibr_curve(self, curve: Dict[int, float], file_path: Optional[str] = None) -> None:
+        """
+        Establece la curva IBR en memoria.
+        
+        Args:
+            curve: Diccionario {dias: tasa_decimal}
+            file_path: Ruta del archivo IBR (opcional)
+        """
+        self.ibr_curve = curve
+        self.ibr_loaded = True
+        self.ibr_file_path = file_path
+    
+    def set_ibr_metadata(self, nombre: str, tamano_kb: float, timestamp: str, estado: str) -> None:
+        """
+        Establece los metadatos del archivo IBR.
+        
+        Args:
+            nombre: Nombre del archivo
+            tamano_kb: Tamaño en KB
+            timestamp: Fecha/hora de cargue (string)
+            estado: Estado del archivo ("Cargado" o "Inválido")
+        """
+        self.ibr_nombre = nombre
+        self.ibr_tamano_kb = tamano_kb
+        self.ibr_timestamp = timestamp
+        self.ibr_estado = estado
+    
+    def get_ibr_for_days(self, days: int) -> float:
+        """
+        Obtiene la tasa IBR para un plazo específico.
+        
+        La tasa se devuelve en PORCENTAJE (0-100), no en decimal.
+        Si el plazo no existe en la curva, retorna 0.0.
+        
+        Args:
+            days: Número de días (plazo)
+            
+        Returns:
+            Tasa IBR en porcentaje (ej. 4.5 para 4.5%)
+        """
+        if not self.ibr_loaded or days not in self.ibr_curve:
+            return 0.0
+        
+        # Convertir de decimal a porcentaje
+        tasa_decimal = self.ibr_curve[days]
+        return tasa_decimal * 100.0
+    
+    def get_ibr_status(self) -> Dict[str, Any]:
+        """
+        Obtiene el estado de la curva IBR.
+        
+        Returns:
+            Diccionario con información del IBR
+        """
+        return {
+            "loaded": self.ibr_loaded,
+            "file_path": self.ibr_file_path,
+            "points_count": len(self.ibr_curve) if self.ibr_loaded else 0
+        }
+    
+    def clear_ibr_data(self) -> None:
+        """Limpia los datos de la curva IBR y sus metadatos."""
+        self.ibr_curve = {}
+        self.ibr_loaded = False
+        self.ibr_file_path = None
+        self.ibr_nombre = None
+        self.ibr_tamano_kb = None
+        self.ibr_timestamp = None
+        self.ibr_estado = "—"
 

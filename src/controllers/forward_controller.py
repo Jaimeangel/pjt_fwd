@@ -19,7 +19,8 @@ class ForwardController:
     
     def __init__(self, data_model=None, simulations_model=None, view=None,
                  pricing_service=None, exposure_service=None, signals=None,
-                 simulations_table_model=None, operations_table_model=None, client_service=None):
+                 simulations_table_model=None, operations_table_model=None, client_service=None,
+                 simulation_processor=None):
         """
         Inicializa el controlador Forward.
         
@@ -33,6 +34,7 @@ class ForwardController:
             simulations_table_model: Instancia de SimulationsTableModel (Qt)
             operations_table_model: Instancia de OperationsTableModel (Qt)
             client_service: Instancia de ClientService
+            simulation_processor: Instancia de ForwardSimulationProcessor
         """
         self._data_model = data_model
         self._simulations_model = simulations_model
@@ -43,6 +45,14 @@ class ForwardController:
         self._simulations_table_model = simulations_table_model
         self._operations_table_model = operations_table_model
         self._client_service = client_service
+        
+        # Procesador de simulaciones
+        if simulation_processor:
+            self._simulation_processor = simulation_processor
+        else:
+            # Crear instancia por defecto si no se proporciona
+            from src.services.forward_simulation_processor import ForwardSimulationProcessor
+            self._simulation_processor = ForwardSimulationProcessor()
         
         # Estado actual
         self._current_client_nit = None
@@ -55,13 +65,20 @@ class ForwardController:
         """Conecta las señales de la vista a los métodos del controlador."""
         if self._view:
             self._view.load_415_requested.connect(self.load_415)
+            self._view.load_ibr_requested.connect(self.load_ibr)
             self._view.client_selected.connect(self.select_client)
             self._view.add_simulation_requested.connect(self.add_simulation)
-            self._view.duplicate_simulation_requested.connect(self.duplicate_simulation)
             self._view.delete_simulations_requested.connect(self.delete_simulations)
-            self._view.run_simulations_requested.connect(self.run_simulations)
+            self._view.simulate_selected_requested.connect(self.simulate_selected_row)
             self._view.save_simulations_requested.connect(self.save_simulations)
             print("[ForwardController] Señales de vista conectadas")
+        
+        # Configurar el resolver de IBR en el modelo de simulaciones
+        if self._simulations_table_model and self._data_model:
+            self._simulations_table_model.set_ibr_resolver(
+                lambda dias: self._data_model.get_ibr_for_days(dias)
+            )
+            print("[ForwardController] IBR resolver configurado en modelo de simulaciones")
     
     def load_415(self, file_path: str) -> None:
         """
@@ -389,6 +406,107 @@ class ForwardController:
         
         return exposure_by_nit
     
+    def load_ibr(self, file_path: str) -> None:
+        """
+        Carga el archivo IBR (curva de tasas).
+        
+        Args:
+            file_path: Ruta al archivo CSV con la curva IBR
+        """
+        print(f"\n[ForwardController] load_ibr: {file_path}")
+        
+        try:
+            from pathlib import Path
+            from datetime import datetime
+            import os
+            import sys
+            sys.path.insert(0, str(Path(__file__).parent.parent.parent / "data"))
+            from data.ibr_loader import load_ibr_csv, validate_ibr_curve
+            
+            file_obj = Path(file_path)
+            
+            # 1. Validar que el archivo existe
+            if not file_obj.exists():
+                print(f"   ❌ Error: El archivo no existe")
+                if self._view:
+                    self._view.notify(f"Archivo IBR no encontrado", "error")
+                    self._view.update_ibr_status(None, "Inválido")
+                return
+            
+            # 2. Validar extensión .csv
+            if file_obj.suffix.lower() != '.csv':
+                print(f"   ❌ Error: Extensión inválida ({file_obj.suffix}), se esperaba .csv")
+                if self._view:
+                    self._view.notify(f"Archivo IBR debe ser .csv", "error")
+                    self._view.update_ibr_status(None, "Inválido")
+                return
+            
+            print(f"   ✓ Archivo encontrado: {file_obj.name}")
+            
+            # 3. Cargar curva IBR
+            print(f"   📊 Cargando curva IBR...")
+            ibr_curve = load_ibr_csv(file_path)
+            
+            if not ibr_curve:
+                print(f"   ❌ Error: Curva IBR vacía")
+                if self._view:
+                    self._view.notify(f"Archivo IBR vacío o inválido", "error")
+                    self._view.update_ibr_status(file_path, "Inválido")
+                return
+            
+            # 4. Validar curva
+            if not validate_ibr_curve(ibr_curve):
+                print(f"   ❌ Error: Curva IBR inválida")
+                if self._view:
+                    self._view.notify(f"Curva IBR contiene datos inválidos", "error")
+                    self._view.update_ibr_status(file_path, "Inválido")
+                return
+            
+            print(f"   ✓ Curva IBR cargada: {len(ibr_curve)} puntos")
+            
+            # Mostrar algunos puntos de muestra
+            sample_points = sorted(ibr_curve.keys())[:5]
+            for dias in sample_points:
+                tasa_pct = ibr_curve[dias] * 100
+                print(f"      {dias} días → {tasa_pct:.4f}%")
+            
+            # 5. Calcular metadatos del archivo
+            tamano_kb = os.path.getsize(file_path) / 1024.0
+            timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+            nombre_archivo = file_obj.name
+            
+            # 6. Guardar en el modelo
+            if self._data_model:
+                self._data_model.set_ibr_curve(ibr_curve, file_path)
+                self._data_model.set_ibr_metadata(nombre_archivo, tamano_kb, timestamp, "Cargado")
+                print(f"   ✓ Curva IBR guardada en ForwardDataModel")
+            
+            # 7. Actualizar vista
+            if self._view:
+                # Actualizar banner con estado
+                self._view.update_ibr_status(
+                    file_path=file_path,
+                    estado="Cargado",
+                    tamano_kb=tamano_kb,
+                    timestamp=timestamp
+                )
+                
+                # Notificación
+                self._view.notify(
+                    f"Curva IBR cargada: {nombre_archivo} ({len(ibr_curve)} puntos)",
+                    "info"
+                )
+            
+            print(f"   ✅ Archivo IBR cargado exitosamente")
+            
+        except Exception as e:
+            print(f"   ❌ Error al cargar IBR: {e}")
+            import traceback
+            traceback.print_exc()
+            if self._view:
+                self._view.notify(f"Error al cargar IBR: {str(e)}", "error")
+                self._view.update_ibr_status(None, "Inválido")
+    
     def select_client(self, nombre_o_nit: str) -> None:
         """
         Selecciona un cliente por nombre o NIT.
@@ -422,6 +540,11 @@ class ForwardController:
         
         # Guardar cliente actual
         self._current_client_nit = nit
+        
+        # Actualizar cliente actual en el modelo de datos
+        if self._data_model:
+            nombre = self._data_model.get_nombre_by_nit(nit)
+            self._data_model.set_current_client(nit, nombre)
         
         # Obtener límites del cliente usando ClientService (mock)
         if self._client_service:
@@ -487,26 +610,29 @@ class ForwardController:
         """Agrega una nueva fila de simulación."""
         print("[ForwardController] add_simulation")
         
-        # Aquí iría: self._simulations_model.add()
-        # Por ahora, agregar directamente al modelo de tabla Qt
+        # Verificar que hay un cliente seleccionado
+        if not self._current_client_nit:
+            print("   ⚠️  No hay cliente seleccionado")
+            if self._view:
+                self._view.notify("Seleccione primero una contraparte antes de agregar una simulación.", "warning")
+            return
+        
+        # Obtener el nombre del cliente
+        cliente_nombre = ""
+        if self._data_model:
+            # Intentar obtener el nombre del cliente por NIT
+            cliente_nombre = self._data_model.get_nombre_by_nit(self._current_client_nit)
+            if not cliente_nombre:
+                cliente_nombre = self._current_client_nit
+        
+        print(f"   → Cliente seleccionado: {cliente_nombre}")
+        
+        # Agregar fila al modelo de tabla Qt
         if self._simulations_table_model:
-            self._simulations_table_model.add_row()
+            self._simulations_table_model.add_row(cliente_nombre=cliente_nombre)
             print("   → Fila agregada a la tabla de simulaciones")
         
         # Emitir señal
-        if self._signals:
-            self._signals.forward_simulations_changed.emit()
-    
-    def duplicate_simulation(self, row: int) -> None:
-        """
-        Duplica una fila de simulación.
-        
-        Args:
-            row: Índice de la fila a duplicar
-        """
-        print(f"[ForwardController] duplicate_simulation: row={row}")
-        
-        # Aquí iría: self._simulations_model.duplicate(row)
         if self._signals:
             self._signals.forward_simulations_changed.emit()
     
@@ -529,117 +655,114 @@ class ForwardController:
         if self._signals:
             self._signals.forward_simulations_changed.emit()
     
-    def run_simulations(self) -> None:
-        """Ejecuta los cálculos para todas las simulaciones."""
+    def simulate_selected_row(self) -> None:
+        """
+        Simula la exposición crediticia de la fila seleccionada.
+        
+        Recalcula la exposición total incorporando la operación simulada
+        junto con las operaciones vigentes del cliente actual.
+        """
         print("\n" + "="*60)
-        print("[ForwardController] run_simulations - INICIANDO")
+        print("[ForwardController] simulate_selected_row - INICIANDO")
         print("="*60)
         
-        if not self._simulations_table_model:
-            print("   ❌ Error: No hay modelo de tabla de simulaciones")
-            return
-        
-        # Obtener todas las filas de simulaciones
-        rows = self._simulations_table_model.get_all_rows()
-        
-        if not rows:
-            print("   ⚠️  No hay simulaciones para procesar")
+        # 1) Validaciones
+        nit = self._data_model.get_current_client_nit() if self._data_model else None
+        if not nit:
+            print("   ⚠️  No hay contraparte seleccionada")
             if self._view:
-                self._view.notify("No hay simulaciones para procesar", "warning")
+                self._view.notify("Seleccione primero una contraparte.", "warning")
             return
         
-        print(f"\n📊 Procesando {len(rows)} simulaciones...")
+        # Obtener índice seleccionado
+        idx = self._view.get_selected_simulation_index() if self._view else None
+        if not idx or not idx.isValid():
+            print("   ⚠️  No hay fila de simulación seleccionada")
+            if self._view:
+                self._view.notify("Seleccione una fila de simulación.", "warning")
+            return
         
-        # Acumulador de exposición simulada
-        exposicion_simulada_total = 0.0
+        row_idx = idx.row()
+        row = self._simulations_table_model.get_row_data(row_idx) if self._simulations_table_model else None
         
-        # Iterar cada fila y calcular
-        for idx, row_data in enumerate(rows):
-            print(f"\n   Simulación {idx + 1}:")
-            print(f"      Cliente: {row_data.get('cliente', 'N/A')}")
-            print(f"      Nominal USD: {row_data.get('nominal_usd', 0):,.2f}")
-            print(f"      Spot: {row_data.get('spot', 0):,.2f}")
-            
-            # 1. Calcular pricing usando ForwardPricingService
-            if self._pricing_service:
-                pricing_result = self._pricing_service.calc_forward_from_simulation(row_data)
-                
-                # Actualizar fila con resultados
-                row_data['tasa_fwd'] = pricing_result['tasa_fwd']
-                row_data['puntos'] = pricing_result['puntos']
-                row_data['fair_value'] = pricing_result['fair_value']
-                
-                print(f"      ✓ Tasa Fwd calculada: {pricing_result['tasa_fwd']:,.6f}")
-                print(f"      ✓ Puntos: {pricing_result['puntos']:,.6f}")
-                print(f"      ✓ Fair Value: $ {pricing_result['fair_value']:,.2f}")
-            
-            # 2. Calcular exposición usando ExposureService
-            if self._exposure_service:
-                exposicion = self._exposure_service.calc_simulated_exposure(row_data)
-                exposicion_simulada_total += exposicion
-                
-                print(f"      ✓ Exposición: $ {exposicion:,.2f}")
-            
-            # 3. Actualizar la fila en el modelo de tabla
-            self._simulations_table_model.update_row(idx, row_data)
+        if not row:
+            print("   ❌ Error: No se pudo obtener datos de la fila")
+            return
         
-        print(f"\n✅ Simulaciones procesadas exitosamente")
-        print(f"   Exposición simulada total: $ {exposicion_simulada_total:,.2f}")
+        print(f"   → Fila seleccionada: {row_idx}")
+        print(f"   → Cliente: {nit}")
         
-        # 4. Calcular métricas de exposición
-        outstanding = self._current_outstanding  # Mock
-        total_con_simulacion = outstanding + exposicion_simulada_total
+        # Verificar insumos mínimos
+        required_fields = {
+            "punta_cli": "Punta Cliente",
+            "nominal_usd": "Nominal USD",
+            "spot": "Tasa Spot",
+            "puntos": "Puntos Fwd",
+            "plazo": "Plazo"
+        }
         
-        # Obtener límites del cliente actual
-        disponibilidad = 0.0
-        limite_max = 0.0
+        for field_key, field_name in required_fields.items():
+            value = row.get(field_key)
+            if value is None or value == "":
+                print(f"   ❌ Falta el campo: {field_name}")
+                if self._view:
+                    self._view.notify(f"Complete el campo: {field_name}", "warning")
+                return
         
-        if self._client_service and self._current_client_nit:
-            limits = self._client_service.get_client_limits(self._current_client_nit)
-            limite_max = limits['limite_max']
-            disponibilidad = limite_max - total_con_simulacion
-        else:
-            # Mock sin cliente seleccionado
-            limite_max = 5_000_000_000.0  # $5,000 millones
-            disponibilidad = limite_max - total_con_simulacion
+        print("   ✓ Todos los campos requeridos están presentes")
         
-        print(f"\n📈 Métricas de Exposición:")
-        print(f"   Outstanding actual: $ {outstanding:,.2f}")
-        print(f"   Total con simulación: $ {total_con_simulacion:,.2f}")
-        print(f"   Límite máximo: $ {limite_max:,.2f}")
-        print(f"   Disponibilidad: $ {disponibilidad:,.2f}")
+        # 2) Resolver nombre y fc
+        nombre = self._data_model.get_current_client_name() if self._data_model else ""
+        fc = self._data_model.get_fc_for_nit(nit) if self._data_model else 0.0
         
-        # 5. Actualizar vista
+        print(f"   → Nombre: {nombre}")
+        print(f"   → FC: {fc}")
+        
+        # 3) Convertir fila simulada a "operación 415-like"
+        print("\n   📊 Convirtiendo simulación a operación 415-like...")
+        simulated_op = self._simulation_processor.build_simulated_operation(row, nit, nombre, fc)
+        
+        print(f"      ✓ Deal: {simulated_op.get('deal')}")
+        print(f"      ✓ VNA: {simulated_op.get('vna'):,.2f} USD")
+        print(f"      ✓ TRM: {simulated_op.get('trm'):,.2f}")
+        print(f"      ✓ VNE: {simulated_op.get('vne'):,.2f}")
+        print(f"      ✓ VR: {simulated_op.get('vr'):,.2f}")
+        
+        # 4) Tomar las vigentes del cliente actual
+        vigentes = self._data_model.get_operaciones_por_nit(nit) if self._data_model else []
+        print(f"\n   📋 Operaciones vigentes del cliente: {len(vigentes)}")
+        
+        # 5) Recalcular exposición conjunto
+        print("\n   🧮 Recalculando exposición conjunto (vigentes + simulada)...")
+        exp_total = self._simulation_processor.recalc_exposure_with_simulation(vigentes, simulated_op)
+        
+        print(f"      ✓ Exposición total: $ {exp_total:,.2f} COP")
+        
+        # 6) Mostrar en UI
+        outstanding = self._data_model.get_outstanding_por_nit(nit) if self._data_model else 0.0
+        
+        print(f"\n   📈 Métricas de Exposición:")
+        print(f"      Outstanding actual: $ {outstanding:,.2f}")
+        print(f"      Total con simulación: $ {exp_total:,.2f}")
+        
         if self._view:
-            # Actualizar labels de exposición
             self._view.show_exposure(
                 outstanding=outstanding,
-                total_con_simulacion=total_con_simulacion,
-                disponibilidad=disponibilidad
+                total_con_simulacion=exp_total,
+                disponibilidad=None  # Se puede calcular si se tiene línea de crédito
             )
             
-            # Actualizar gráfica (placeholder)
-            chart_data = {
-                "linea_total": limite_max,
-                "consumo_actual": outstanding,
-                "consumo_con_simulacion": total_con_simulacion,
-                "disponibilidad": disponibilidad
-            }
-            self._view.update_chart(chart_data)
-            
-            # Notificar éxito
             self._view.notify(
-                f"Simulaciones procesadas: {len(rows)} operaciones",
+                f"Simulación procesada: Exposición total $ {exp_total:,.2f}",
                 "info"
             )
         
-        # 6. Emitir señales globales
+        # 7) Emitir señales globales
         if self._signals:
             self._signals.forward_simulations_changed.emit()
-            self._signals.forward_exposure_updated.emit()
         
         print("="*60)
-        print("[ForwardController] run_simulations - COMPLETADO")
+        print("[ForwardController] simulate_selected_row - COMPLETADO")
         print("="*60 + "\n")
     
     def save_simulations(self, rows: List[int]) -> None:
