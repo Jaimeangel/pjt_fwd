@@ -161,15 +161,9 @@ class MainWindow(QMainWindow):
         """Handler para señal forward_simulations_changed."""
         print("[MainWindow] _on_simulations_changed")
         
-        # Actualizar tabla de simulaciones (modelo dummy)
-        self._forward_view.set_simulations_table(model=None)
-        
-        # Actualizar exposición (datos dummy)
-        self._forward_view.show_exposure(
-            outstanding=1000000.0,
-            total_con_simulacion=1500000.0,
-            disponibilidad=4000000.0
-        )
+        # 🔒 NO actualizar exposición aquí.
+        # Agregar/eliminar simulaciones no debe modificar los labels de exposición.
+        # Solo el botón "Simular" actualiza Outstanding + simulación.
     
     def _on_exposure_updated(self, outstanding: float, 
                             total_con_simulacion: float,

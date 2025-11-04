@@ -599,34 +599,52 @@ class ForwardController:
             self._signals.forward_client_changed.emit(nit)
     
     def add_simulation(self) -> None:
-        """Agrega una nueva fila de simulación."""
+        """
+        Agrega una nueva fila de simulación.
+        
+        IMPORTANTE: Este método NO debe modificar los valores de exposición
+        (Outstanding, Outstanding+Sim). Solo agrega una fila vacía a la tabla.
+        """
+        from datetime import date
+        
         print("[ForwardController] add_simulation")
         
-        # Verificar que hay un cliente seleccionado
-        if not self._current_client_nit:
+        # Validar que hay un cliente seleccionado
+        nit = self._data_model.get_current_client_nit() if self._data_model else None
+        nombre = self._data_model.get_current_client_name() if self._data_model else None
+        
+        if not nit:
             print("   ⚠️  No hay cliente seleccionado")
             if self._view:
-                self._view.notify("Seleccione primero una contraparte antes de agregar una simulación.", "warning")
+                self._view.notify("Seleccione primero una contraparte.", "warning")
             return
         
-        # Obtener el nombre del cliente
-        cliente_nombre = ""
-        if self._data_model:
-            # Intentar obtener el nombre del cliente por NIT
-            cliente_nombre = self._data_model.get_nombre_by_nit(self._current_client_nit)
-            if not cliente_nombre:
-                cliente_nombre = self._current_client_nit
+        print(f"   → Cliente seleccionado: {nombre}")
         
-        print(f"   → Cliente seleccionado: {cliente_nombre}")
-        
-        # Agregar fila al modelo de tabla Qt
+        # Crear una nueva fila vacía (sin modificar exposición)
         if self._simulations_table_model:
-            self._simulations_table_model.add_row(cliente_nombre=cliente_nombre)
+            self._simulations_table_model.add_row({
+                "cliente": nombre,
+                "nit": nit,
+                "punta_cli": "Compra",
+                "punta_emp": "Venta",
+                "nominal_usd": 0.0,
+                "fec_sim": date.today().strftime("%Y-%m-%d"),
+                "fec_venc": None,
+                "plazo": None,
+                "spot": 0.0,
+                "puntos": 0.0,
+                "tasa_fwd": 0.0,
+                "tasa_ibr": None,
+                "derecho": None,
+                "obligacion": None,
+                "fair_value": None
+            })
             print("   → Fila agregada a la tabla de simulaciones")
         
-        # Emitir señal
-        if self._signals:
-            self._signals.forward_simulations_changed.emit()
+        # 🔒 Importante: NO tocar los labels de exposición aquí.
+        # No llamar show_exposure ni modificar lblOutstanding ni lblOutstandingSim.
+        # Solo el botón "Simular" actualiza Outstanding + simulación.
     
     def delete_simulations(self, rows: List[int]) -> None:
         """
