@@ -387,12 +387,14 @@ class SimulationsTableModel(QAbstractTableModel):
         Recalcula el Plazo cuando cambia la Fecha de Vencimiento.
         También actualiza la Tasa IBR basándose en el plazo calculado.
         
-        Plazo = días entre Fecha Vencimiento y hoy
+        Plazo = días HÁBILES entre hoy y Fecha Vencimiento (Colombia)
+        Aplica las reglas del informe 415: -1 y piso de 10 días
         
         Args:
             row: Índice de la fila
         """
         from datetime import date, datetime
+        from src.utils.date_utils import dias_habiles_colombia, aplicar_reglas_plazo
         
         if 0 <= row < len(self._rows):
             row_data = self._rows[row]
@@ -410,15 +412,16 @@ class SimulationsTableModel(QAbstractTableModel):
                     else:
                         fecha_venc = fecha_venc_str
                     
-                    # Calcular plazo
+                    # Calcular plazo usando días HÁBILES Colombia
                     hoy = date.today()
-                    plazo_dias = (fecha_venc - hoy).days
+                    plazo_dias = dias_habiles_colombia(hoy, fecha_venc)
                     
-                    # Evitar plazos negativos
-                    plazo_dias = plazo_dias if plazo_dias >= 0 else 0
+                    # Aplicar reglas del 415: -1 y piso de 10
+                    plazo_dias = aplicar_reglas_plazo(plazo_dias)
+                    
                     row_data["plazo"] = plazo_dias
                     
-                    # Actualizar Tasa IBR usando el callback
+                    # Actualizar Tasa IBR usando el callback (ahora usa plazo hábil)
                     if self._ibr_resolver and plazo_dias is not None:
                         tasa_ibr_pct = self._ibr_resolver(plazo_dias)
                         row_data["tasa_ibr"] = tasa_ibr_pct / 100.0  # Guardar como decimal

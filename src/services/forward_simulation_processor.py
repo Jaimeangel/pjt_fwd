@@ -79,12 +79,18 @@ class ForwardSimulationProcessor:
         except (ValueError, AttributeError):
             fecha_corte = date.today()
         
-        # Calcular td (plazo en días)
+        # Calcular td (plazo en días HÁBILES Colombia)
+        # Usar la misma lógica que el informe 415
+        from src.utils.date_utils import dias_habiles_colombia, aplicar_reglas_plazo
+        
         if plazo is not None and plazo >= 0:
+            # Si ya viene calculado, usarlo (pero verificar que sea hábil)
             td = plazo
         else:
-            td = (fecha_liquidacion - fecha_corte).days
-            td = max(0, td)
+            # Calcular días hábiles entre fecha_corte y fecha_venc
+            td = dias_habiles_colombia(fecha_corte, fecha_liquidacion)
+            # Aplicar reglas: -1 y piso de 10
+            td = aplicar_reglas_plazo(td)
         
         # Calcular t = sqrt(min(td, 252) / 252)
         t = math.sqrt(min(td, 252) / 252.0) if td >= 0 else 0.0
