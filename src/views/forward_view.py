@@ -958,7 +958,7 @@ class ForwardView(QWidget):
                     punta_col_idx, 
                     PuntaClienteDelegate(self.tblSimulaciones)
                 )
-                print(f"   ✓ Delegate configurado para columna 'Punta Cli' (índice {punta_col_idx})")
+                print(f"   [OK] Delegate configurado para columna 'Punta Cli' (indice {punta_col_idx})")
             
             # Delegate para "Fec Venc" (columna 5)
             fecha_col_idx = model.get_column_index("Fec Venc")
@@ -967,7 +967,7 @@ class ForwardView(QWidget):
                     fecha_col_idx,
                     FechaDelegate(self.tblSimulaciones)
                 )
-                print(f"   ✓ Delegate configurado para columna 'Fec Venc' (índice {fecha_col_idx})")
+                print(f"   [OK] Delegate configurado para columna 'Fec Venc' (indice {fecha_col_idx})")
             
             # Configurar tabla con distribución uniforme de columnas
             from PySide6.QtWidgets import QHeaderView, QAbstractItemView

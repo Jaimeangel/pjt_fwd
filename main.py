@@ -14,6 +14,7 @@ sys.path.insert(0, str(Path(__file__).parent / "src"))
 
 # Importar componentes del módulo Forward
 from views.forward_view import ForwardView
+from views.settings_view import SettingsView
 from views.main_window import MainWindow
 from controllers.forward_controller import ForwardController
 from models.forward_data_model import ForwardDataModel
@@ -41,6 +42,7 @@ class SimuladorForwardApp:
         self.main_window = None
         self.signals = None
         self.forward_view = None
+        self.settings_view = None
         self.forward_controller = None
         
         # Modelos
@@ -81,14 +83,18 @@ class SimuladorForwardApp:
         self.exposure_service = ExposureService()
         self.client_service = ClientService()
         
-        # 5. Crear vista
+        # 5. Crear vistas
         print("[App] Creando ForwardView...")
         self.forward_view = ForwardView()
         
+        print("[App] Creando SettingsView...")
+        self.settings_view = SettingsView()
+        
         # 6. Crear ventana principal (conecta señales globales y crea modelos de tabla)
-        print("[App] Creando MainWindow...")
+        print("[App] Creando MainWindow con Top Navigation Bar...")
         self.main_window = MainWindow(
             forward_view=self.forward_view,
+            settings_view=self.settings_view,
             signals=self.signals
         )
         
