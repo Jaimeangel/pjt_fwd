@@ -1058,6 +1058,26 @@ class ForwardView(QWidget):
         sm = self.tblSimulaciones.selectionModel()
         return sm.currentIndex() if sm else QModelIndex()
     
+    def get_selected_simulation_rows(self):
+        """
+        Obtiene los índices de todas las filas seleccionadas en la tabla de simulaciones.
+        Permite selección múltiple con Ctrl o Shift.
+        
+        Returns:
+            Lista de enteros con los índices de filas seleccionadas (ordenados)
+        """
+        sm = self.tblSimulaciones.selectionModel()
+        if not sm:
+            return []
+        
+        # Obtener todas las filas seleccionadas
+        selected_indexes = sm.selectedRows()
+        
+        # Extraer solo los números de fila y ordenarlos
+        selected_rows = sorted(set(index.row() for index in selected_indexes))
+        
+        return selected_rows
+    
     def notify(self, message: str, level: str) -> None:
         """
         Muestra una notificación al usuario.

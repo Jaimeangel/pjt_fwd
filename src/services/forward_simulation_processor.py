@@ -185,4 +185,56 @@ class ForwardSimulationProcessor:
         exp_cred_total = 1.4 * (crp + mgp * total_epfp)
         
         return exp_cred_total
+    
+    def recalc_exposure_with_multiple_simulations(
+        self,
+        ops_vigentes: List[Dict[str, Any]],
+        simulated_ops: List[Dict[str, Any]]
+    ) -> float:
+        """
+        Recalcula la exposición crediticia total incluyendo múltiples operaciones simuladas.
+        
+        Combina operaciones vigentes con todas las operaciones simuladas y aplica
+        las mismas fórmulas usadas en el cálculo de Outstanding.
+        
+        Args:
+            ops_vigentes: Lista de operaciones vigentes del cliente
+            simulated_ops: Lista de operaciones simuladas (estructura 415-like)
+            
+        Returns:
+            Exposición crediticia total (vigentes + todas las simuladas)
+        """
+        # Combinar operaciones vigentes con todas las simuladas
+        todas_ops = ops_vigentes + simulated_ops
+        
+        if not todas_ops:
+            return 0.0
+        
+        # Obtener fc de la primera operación (debe ser igual para todas del mismo NIT)
+        fc = todas_ops[0].get("fc", 0.0)
+        
+        # Sumar VNE y VR de todas las operaciones
+        total_vne = sum(float(op.get("vne", 0) or 0) for op in todas_ops)
+        total_vr = sum(float(op.get("vr", 0) or 0) for op in todas_ops)
+        
+        # Calcular EPFp total
+        total_epfp = abs(total_vne * fc)
+        
+        # Calcular MGP (Market Gain Potential)
+        if total_epfp > 0:
+            try:
+                exponent = (total_vr - 0) / (1.9 * total_epfp)
+                mgp = min(0.05 + 0.95 * math.exp(exponent), 1.0)
+            except (OverflowError, ZeroDivisionError):
+                mgp = 0.0
+        else:
+            mgp = 0.0
+        
+        # Calcular CRP (Current Replacement Price)
+        crp = max(total_vr - 0, 0.0)
+        
+        # Calcular exposición crediticia total
+        exp_cred_total = 1.4 * (crp + mgp * total_epfp)
+        
+        return exp_cred_total
 

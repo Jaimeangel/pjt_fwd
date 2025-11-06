@@ -667,16 +667,17 @@ class ForwardController:
     
     def simulate_selected_row(self) -> None:
         """
-        Simula la exposición crediticia de la fila seleccionada.
+        Simula la exposición crediticia de una o múltiples filas seleccionadas.
+        Permite selección múltiple con Ctrl o Shift.
         
-        Recalcula la exposición total incorporando la operación simulada
+        Recalcula la exposición total incorporando todas las operaciones simuladas
         junto con las operaciones vigentes del cliente actual.
         """
         print("\n" + "="*60)
         print("[ForwardController] simulate_selected_row - INICIANDO")
         print("="*60)
         
-        # 1) Validaciones
+        # 1) Validaciones básicas
         nit = self._data_model.get_current_client_nit() if self._data_model else None
         if not nit:
             print("   ⚠️  No hay contraparte seleccionada")
@@ -684,25 +685,23 @@ class ForwardController:
                 self._view.notify("Seleccione primero una contraparte.", "warning")
             return
         
-        # Obtener índice seleccionado
-        idx = self._view.get_selected_simulation_index() if self._view else None
-        if not idx or not idx.isValid():
-            print("   ⚠️  No hay fila de simulación seleccionada")
+        # Obtener todas las filas seleccionadas (soporte para múltiple selección)
+        selected_rows = self._view.get_selected_simulation_rows() if self._view else []
+        
+        if not selected_rows:
+            print("   ⚠️  No hay filas de simulación seleccionadas")
             if self._view:
-                self._view.notify("Seleccione una fila de simulación.", "warning")
+                self._view.notify("Seleccione al menos una operación para simular (Ctrl o Shift para múltiple).", "warning")
             return
         
-        row_idx = idx.row()
-        row = self._simulations_table_model.get_row_data(row_idx) if self._simulations_table_model else None
-        
-        if not row:
-            print("   ❌ Error: No se pudo obtener datos de la fila")
-            return
-        
-        print(f"   → Fila seleccionada: {row_idx}")
+        print(f"   → Filas seleccionadas: {len(selected_rows)} ({selected_rows})")
         print(f"   → Cliente: {nit}")
         
-        # Verificar insumos mínimos
+        # Deshabilitar botón durante el cálculo
+        if self._view and hasattr(self._view, 'btnRun'):
+            self._view.btnRun.setEnabled(False)
+        
+        # 2) Validar y construir lista de operaciones simuladas
         required_fields = {
             "punta_cli": "Punta Cliente",
             "nominal_usd": "Nominal USD",
@@ -711,61 +710,77 @@ class ForwardController:
             "plazo": "Plazo"
         }
         
-        for field_key, field_name in required_fields.items():
-            value = row.get(field_key)
-            if value is None or value == "":
-                print(f"   ❌ Falta el campo: {field_name}")
-                if self._view:
-                    self._view.notify(f"Complete el campo: {field_name}", "warning")
-                return
-        
-        print("   ✓ Todos los campos requeridos están presentes")
-        
-        # 2) Resolver nombre y fc
+        simulated_ops = []
         nombre = self._data_model.get_current_client_name() if self._data_model else ""
         fc = self._data_model.get_fc_for_nit(nit) if self._data_model else 0.0
         
         print(f"   → Nombre: {nombre}")
         print(f"   → FC: {fc}")
         
-        # 3) Convertir fila simulada a "operación 415-like"
-        print("\n   📊 Convirtiendo simulación a operación 415-like...")
-        simulated_op = self._simulation_processor.build_simulated_operation(row, nit, nombre, fc)
+        # Validar cada fila seleccionada
+        for row_idx in selected_rows:
+            row = self._simulations_table_model.get_row_data(row_idx) if self._simulations_table_model else None
+            
+            if not row:
+                print(f"   ❌ Error: No se pudo obtener datos de la fila {row_idx}")
+                if self._view and hasattr(self._view, 'btnRun'):
+                    self._view.btnRun.setEnabled(True)
+                return
+            
+            # Verificar insumos mínimos
+            for field_key, field_name in required_fields.items():
+                value = row.get(field_key)
+                if value is None or value == "":
+                    print(f"   ❌ Fila {row_idx}: Falta el campo: {field_name}")
+                    if self._view:
+                        self._view.notify(f"Fila {row_idx + 1}: Complete el campo '{field_name}'", "warning")
+                        if hasattr(self._view, 'btnRun'):
+                            self._view.btnRun.setEnabled(True)
+                    return
+            
+            # Convertir fila a operación 415-like
+            simulated_op = self._simulation_processor.build_simulated_operation(row, nit, nombre, fc)
+            simulated_ops.append(simulated_op)
+            
+            print(f"   ✓ Fila {row_idx}: Deal={simulated_op.get('deal')}, VNA={simulated_op.get('vna'):,.2f} USD")
         
-        print(f"      ✓ Deal: {simulated_op.get('deal')}")
-        print(f"      ✓ VNA: {simulated_op.get('vna'):,.2f} USD")
-        print(f"      ✓ TRM: {simulated_op.get('trm'):,.2f}")
-        print(f"      ✓ VNE: {simulated_op.get('vne'):,.2f}")
-        print(f"      ✓ VR: {simulated_op.get('vr'):,.2f}")
+        print(f"\n   ✓ Todas las filas ({len(simulated_ops)}) validadas y convertidas")
         
-        # 4) Tomar las vigentes del cliente actual
+        # 3) Obtener operaciones vigentes del cliente
         vigentes = self._data_model.get_operaciones_por_nit(nit) if self._data_model else []
         print(f"\n   📋 Operaciones vigentes del cliente: {len(vigentes)}")
         
-        # 5) Recalcular exposición conjunto
-        print("\n   🧮 Recalculando exposición conjunto (vigentes + simulada)...")
-        exp_total = self._simulation_processor.recalc_exposure_with_simulation(vigentes, simulated_op)
+        # 4) Recalcular exposición conjunta
+        print(f"\n   🧮 Recalculando exposición conjunto (vigentes + {len(simulated_ops)} simuladas)...")
+        exp_total = self._simulation_processor.recalc_exposure_with_multiple_simulations(vigentes, simulated_ops)
         
         print(f"      ✓ Exposición total: $ {exp_total:,.2f} COP")
         
-        # 6) Mostrar en UI
+        # 5) Mostrar en UI
         outstanding = self._data_model.get_outstanding_por_nit(nit) if self._data_model else 0.0
         
         print(f"\n   📈 Métricas de Exposición:")
         print(f"      Outstanding actual: $ {outstanding:,.2f}")
-        print(f"      Total con simulación: $ {exp_total:,.2f}")
+        print(f"      Total con simulación ({len(simulated_ops)} ops): $ {exp_total:,.2f}")
         
         if self._view:
             self._view.show_exposure(
                 outstanding=outstanding,
                 total_con_simulacion=exp_total,
-                disponibilidad=None  # Se puede calcular si se tiene línea de crédito
+                disponibilidad=None
             )
             
-            self._view.notify(
-                f"Simulación procesada: Exposición total $ {exp_total:,.2f}",
-                "info"
-            )
+            # Mensaje diferenciado según cantidad de operaciones
+            if len(simulated_ops) == 1:
+                mensaje = f"Simulación procesada: Exposición total $ {exp_total:,.2f}"
+            else:
+                mensaje = f"{len(simulated_ops)} simulaciones procesadas: Exposición total $ {exp_total:,.2f}"
+            
+            self._view.notify(mensaje, "info")
+        
+        # Rehabilitar botón
+        if self._view and hasattr(self._view, 'btnRun'):
+            self._view.btnRun.setEnabled(True)
         
         # 7) Emitir señales globales
         if self._signals:
