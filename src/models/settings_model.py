@@ -1,132 +1,132 @@
 """
 Modelo para Settings (Configuración del Sistema).
-Gestiona la configuración y parámetros de la aplicación.
+Gestiona la configuración y parámetros de la aplicación con señales Qt para actualización en tiempo real.
 """
 
+from PySide6.QtCore import QObject, Signal
 from typing import Optional, Dict, Any
 
 
-class SettingsModel:
+class SettingsModel(QObject):
     """
     Modelo de datos para la configuración del sistema.
     
+    Usa señales Qt para notificar cambios en tiempo real a todas las vistas conectadas.
+    
     Responsabilidades:
-    - Gestionar configuraciones de usuario
-    - Almacenar parámetros del sistema
-    - Gestionar preferencias de visualización
-    - Controlar accesos y permisos
+    - Gestionar Patrimonio Técnico Vigente (COP)
+    - Gestionar TRM vigente
+    - Gestionar parámetros normativos
+    - Notificar cambios en tiempo real mediante señales
     """
+    
+    # Señales para cambios en tiempo real
+    patrimonioChanged = Signal(float)
+    trmChanged = Signal(float)
     
     def __init__(self):
         """
-        Inicializa el modelo de configuración.
+        Inicializa el modelo de configuración con valores por defecto.
         """
-        self._settings = {}
-        self._default_settings = {}
-        self._user_preferences = {}
+        super().__init__()
+        
+        # Parámetros Generales
+        self._patrimonio_cop: float = 50_000_000_000.00  # Default: 50 mil millones COP
+        self._trm: float = 4200.50                        # Default: 4200.50 COP/USD
+        
+        # Parámetros Normativos
+        self._lim_endeud: float = 10.0  # %
+        self._lim_entfin: float = 30.0  # %
+        self._colchon: float = 5.0      # %
+        
+        print("[SettingsModel] Inicializado con valores por defecto")
+        print(f"   Patrimonio: $ {self._patrimonio_cop:,.2f} COP")
+        print(f"   TRM: $ {self._trm:,.2f}")
     
-    def get_setting(self, key: str) -> Optional[Any]:
+    # === Parámetros Generales ===
+    
+    def set_patrimonio(self, v: float) -> None:
         """
-        Obtiene el valor de una configuración.
+        Establece el Patrimonio Técnico Vigente y emite señal si cambió.
         
         Args:
-            key: Clave de la configuración
-            
-        Returns:
-            Valor de la configuración o None
+            v: Nuevo valor de patrimonio en COP
         """
-        pass
+        if v != self._patrimonio_cop:
+            self._patrimonio_cop = v
+            self.patrimonioChanged.emit(v)
+            print(f"[SettingsModel] Patrimonio actualizado: $ {v:,.2f} COP")
     
-    def set_setting(self, key: str, value: Any) -> bool:
+    def patrimonio(self) -> float:
         """
-        Establece el valor de una configuración.
+        Obtiene el Patrimonio Técnico Vigente.
+        
+        Returns:
+            Valor de patrimonio en COP
+        """
+        return self._patrimonio_cop
+    
+    def set_trm(self, v: float) -> None:
+        """
+        Establece la TRM vigente y emite señal si cambió.
         
         Args:
-            key: Clave de la configuración
-            value: Valor a establecer
-            
-        Returns:
-            True si se estableció correctamente, False en caso contrario
+            v: Nuevo valor de TRM en COP/USD
         """
-        pass
+        if v != self._trm:
+            self._trm = v
+            self.trmChanged.emit(v)
+            print(f"[SettingsModel] TRM actualizada: $ {v:,.2f}")
     
-    def get_all_settings(self) -> Dict[str, Any]:
+    def trm(self) -> float:
         """
-        Obtiene todas las configuraciones.
+        Obtiene la TRM vigente.
         
         Returns:
-            Diccionario con todas las configuraciones
+            Valor de TRM en COP/USD
         """
-        pass
+        return self._trm
     
-    def reset_to_defaults(self) -> bool:
+    # === Parámetros Normativos ===
+    
+    def set_lim_endeud(self, v: float) -> None:
+        """Establece el límite máximo de endeudamiento individual (%)."""
+        self._lim_endeud = v
+    
+    def lim_endeud(self) -> float:
+        """Obtiene el límite máximo de endeudamiento individual (%)."""
+        return self._lim_endeud
+    
+    def set_lim_entfin(self, v: float) -> None:
+        """Establece el límite máximo de concentración con entidades financieras (%)."""
+        self._lim_entfin = v
+    
+    def lim_entfin(self) -> float:
+        """Obtiene el límite máximo de concentración con entidades financieras (%)."""
+        return self._lim_entfin
+    
+    def set_colchon(self, v: float) -> None:
+        """Establece el colchón de seguridad (%)."""
+        self._colchon = v
+    
+    def colchon(self) -> float:
+        """Obtiene el colchón de seguridad (%)."""
+        return self._colchon
+    
+    # === Métodos de utilidad ===
+    
+    def get_all_params(self) -> Dict[str, Any]:
         """
-        Restaura la configuración a valores predeterminados.
+        Obtiene todos los parámetros como diccionario.
         
         Returns:
-            True si se restauró correctamente, False en caso contrario
+            Diccionario con todos los parámetros
         """
-        pass
-    
-    def load_settings_from_file(self, file_path: str) -> bool:
-        """
-        Carga configuraciones desde un archivo.
-        
-        Args:
-            file_path: Ruta del archivo de configuración
-            
-        Returns:
-            True si se cargó correctamente, False en caso contrario
-        """
-        pass
-    
-    def save_settings_to_file(self, file_path: str) -> bool:
-        """
-        Guarda configuraciones en un archivo.
-        
-        Args:
-            file_path: Ruta del archivo de configuración
-            
-        Returns:
-            True si se guardó correctamente, False en caso contrario
-        """
-        pass
-    
-    def get_user_preference(self, preference_key: str) -> Optional[Any]:
-        """
-        Obtiene una preferencia de usuario.
-        
-        Args:
-            preference_key: Clave de la preferencia
-            
-        Returns:
-            Valor de la preferencia o None
-        """
-        pass
-    
-    def set_user_preference(self, preference_key: str, value: Any) -> bool:
-        """
-        Establece una preferencia de usuario.
-        
-        Args:
-            preference_key: Clave de la preferencia
-            value: Valor a establecer
-            
-        Returns:
-            True si se estableció correctamente, False en caso contrario
-        """
-        pass
-    
-    def validate_setting(self, key: str, value: Any) -> tuple[bool, str]:
-        """
-        Valida un valor de configuración.
-        
-        Args:
-            key: Clave de la configuración
-            value: Valor a validar
-            
-        Returns:
-            Tupla (es_valido, mensaje)
-        """
-        pass
+        return {
+            "patrimonio_cop": self._patrimonio_cop,
+            "trm": self._trm,
+            "lim_endeud": self._lim_endeud,
+            "lim_entfin": self._lim_entfin,
+            "colchon": self._colchon
+        }
 

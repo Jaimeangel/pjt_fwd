@@ -34,14 +34,18 @@ class ForwardView(QWidget):
     simulate_selected_requested = Signal()            # simular fila seleccionada
     save_simulations_requested = Signal(list)         # rows
     
-    def __init__(self, parent=None):
+    def __init__(self, parent=None, settings_model=None):
         """
         Inicializa la vista Forward.
         
         Args:
             parent: Widget padre
+            settings_model: Modelo compartido de configuración (para Patrimonio y TRM)
         """
         super().__init__(parent)
+        
+        # Referencia al modelo de configuración compartido
+        self._settings_model = settings_model
         
         # Referencias a widgets principales (se crean en _setup_ui)
         self.btnLoad415 = None
@@ -82,6 +86,31 @@ class ForwardView(QWidget):
         self.bannerIBR = None
         
         self._setup_ui()
+        self._connect_settings_model()
+    
+    def _connect_settings_model(self):
+        """
+        Conecta las señales del SettingsModel para actualización en tiempo real
+        de Patrimonio y TRM.
+        """
+        if self._settings_model:
+            # Suscribirse a cambios de patrimonio
+            self._settings_model.patrimonioChanged.connect(
+                lambda v: self.lblPatrimonio.setText(f"$ {v:,.2f}")
+            )
+            
+            # Suscribirse a cambios de TRM
+            self._settings_model.trmChanged.connect(
+                lambda v: self.lblTRM.setText(f"$ {v:,.2f}")
+            )
+            
+            # Establecer valores iniciales
+            self.lblPatrimonio.setText(f"$ {self._settings_model.patrimonio():,.2f}")
+            self.lblTRM.setText(f"$ {self._settings_model.trm():,.2f}")
+            
+            print("[ForwardView] Conectado a SettingsModel para actualización en tiempo real")
+        else:
+            print("[ForwardView] SettingsModel no proporcionado, usando valores por defecto")
     
     def _setup_ui(self):
         """Configura la interfaz de usuario completa."""
@@ -733,20 +762,22 @@ class ForwardView(QWidget):
     def show_basic_info(self, patrimonio: float, trm: float,
                         corte_415: Optional[date], estado_415: str) -> None:
         """
-        Actualiza la información básica.
+        Actualiza la información básica del 415.
+        
+        NOTA: Patrimonio y TRM ya NO se actualizan aquí, se actualizan automáticamente
+        desde SettingsModel mediante señales Qt. Los parámetros se mantienen por
+        compatibilidad pero se ignoran.
         
         Args:
-            patrimonio: Patrimonio técnico en COP
-            trm: Tasa Representativa del Mercado
+            patrimonio: [IGNORADO] Patrimonio técnico (actualizado por SettingsModel)
+            trm: [IGNORADO] TRM (actualizado por SettingsModel)
             corte_415: Fecha de corte del 415
             estado_415: Estado del archivo
         """
-        print(f"[ForwardView] show_basic_info: patrimonio={patrimonio}, trm={trm}, "
-              f"corte={corte_415}, estado={estado_415}")
+        print(f"[ForwardView] show_basic_info: corte={corte_415}, estado={estado_415}")
+        print(f"   (Patrimonio y TRM se actualizan automáticamente desde SettingsModel)")
         
-        # Actualizar labels
-        self.lblPatrimonio.setText(f"$ {patrimonio:,.2f}")
-        self.lblTRM.setText(f"$ {trm:,.2f}")
+        # Patrimonio y TRM ya no se actualizan aquí, lo hace SettingsModel automáticamente
         
         if corte_415:
             self.lblFechaCorte415.setText(f"Fecha corte 415: {corte_415.strftime('%d/%m/%Y')}")

@@ -119,19 +119,11 @@ class SettingsView(QWidget):
         Crea el bloque de Parámetros Normativos.
         
         Returns:
-            QGroupBox con los 5 parámetros normativos
+            QGroupBox con los 3 parámetros normativos
         """
         group = QGroupBox("Parámetros Normativos")
         layout = QFormLayout(group)
         layout.setSpacing(8)
-        
-        # Factor de ajuste (Anexo 3, Cap. XVIII – CE011/23)
-        self.inpFactorAjuste = QDoubleSpinBox()
-        self.inpFactorAjuste.setRange(0, 10)
-        self.inpFactorAjuste.setValue(1.4)
-        self.inpFactorAjuste.setDecimals(2)
-        self.inpFactorAjuste.setSingleStep(0.1)
-        layout.addRow("Factor de ajuste (Anexo 3, Cap. XVIII – CE011/23):", self.inpFactorAjuste)
         
         # Límite máx. endeudamiento individual (%)
         self.inpLimEndeud = QDoubleSpinBox()
@@ -140,14 +132,6 @@ class SettingsView(QWidget):
         self.inpLimEndeud.setDecimals(1)
         self.inpLimEndeud.setSuffix(" %")
         layout.addRow("Límite máx. endeudamiento individual (%):", self.inpLimEndeud)
-        
-        # Límite máx. concentración con SBLC (%)
-        self.inpLimSBLC = QDoubleSpinBox()
-        self.inpLimSBLC.setRange(0, 100)
-        self.inpLimSBLC.setValue(30)
-        self.inpLimSBLC.setDecimals(1)
-        self.inpLimSBLC.setSuffix(" %")
-        layout.addRow("Límite máx. concentración con SBLC (%):", self.inpLimSBLC)
         
         # Límite máx. concentración entidades financieras (%)
         self.inpLimEntFin = QDoubleSpinBox()
@@ -450,33 +434,24 @@ class SettingsView(QWidget):
         
         print(f"[SettingsView] Parametros generales cargados: Patrimonio={patrimonio_cop:,.2f} COP, TRM={trm}")
     
-    def load_parametros_normativos(self, factor_ajuste: float, lim_endeud: float, 
-                                   lim_sblc: float, lim_entfin: float, colchon: float) -> None:
+    def load_parametros_normativos(self, lim_endeud: float, lim_entfin: float, colchon: float) -> None:
         """
         Carga los parámetros normativos en la interfaz.
         
         Args:
-            factor_ajuste: Factor de ajuste
             lim_endeud: Límite máx. endeudamiento individual (%)
-            lim_sblc: Límite máx. concentración SBLC (%)
             lim_entfin: Límite máx. concentración ent. financieras (%)
             colchon: Colchón de seguridad (%)
         """
-        self.inpFactorAjuste.blockSignals(True)
         self.inpLimEndeud.blockSignals(True)
-        self.inpLimSBLC.blockSignals(True)
         self.inpLimEntFin.blockSignals(True)
         self.inpColchon.blockSignals(True)
         
-        self.inpFactorAjuste.setValue(factor_ajuste)
         self.inpLimEndeud.setValue(lim_endeud)
-        self.inpLimSBLC.setValue(lim_sblc)
         self.inpLimEntFin.setValue(lim_entfin)
         self.inpColchon.setValue(colchon)
         
-        self.inpFactorAjuste.blockSignals(False)
         self.inpLimEndeud.blockSignals(False)
-        self.inpLimSBLC.blockSignals(False)
         self.inpLimEntFin.blockSignals(False)
         self.inpColchon.blockSignals(False)
         
@@ -499,12 +474,10 @@ class SettingsView(QWidget):
         Obtiene los parámetros normativos actuales.
         
         Returns:
-            Diccionario con los 5 parámetros normativos
+            Diccionario con los 3 parámetros normativos
         """
         return {
-            "factor_ajuste": self.inpFactorAjuste.value(),
             "lim_endeud": self.inpLimEndeud.value(),
-            "lim_sblc": self.inpLimSBLC.value(),
             "lim_entfin": self.inpLimEntFin.value(),
             "colchon": self.inpColchon.value()
         }

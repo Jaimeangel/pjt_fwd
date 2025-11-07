@@ -17,8 +17,10 @@ from views.forward_view import ForwardView
 from views.settings_view import SettingsView
 from views.main_window import MainWindow
 from controllers.forward_controller import ForwardController
+from controllers.settings_controller import SettingsController
 from models.forward_data_model import ForwardDataModel
 from models.simulations_model import SimulationsModel
+from models.settings_model import SettingsModel
 from services.forward_pricing_service import ForwardPricingService
 from services.exposure_service import ExposureService
 from services.client_service import ClientService
@@ -44,10 +46,12 @@ class SimuladorForwardApp:
         self.forward_view = None
         self.settings_view = None
         self.forward_controller = None
+        self.settings_controller = None
         
         # Modelos
         self.forward_data_model = None
         self.simulations_model = None
+        self.settings_model = None  # Modelo compartido para configuración
         
         # Servicios
         self.pricing_service = None
@@ -72,10 +76,11 @@ class SimuladorForwardApp:
         print("[App] Creando señales globales...")
         self.signals = AppSignals()
         
-        # 3. Crear modelos (stubs)
+        # 3. Crear modelos
         print("[App] Creando modelos...")
         self.forward_data_model = ForwardDataModel()
         self.simulations_model = SimulationsModel()
+        self.settings_model = SettingsModel()  # Modelo compartido
         
         # 4. Crear servicios (con lógica mock)
         print("[App] Creando servicios...")
@@ -83,9 +88,9 @@ class SimuladorForwardApp:
         self.exposure_service = ExposureService()
         self.client_service = ClientService()
         
-        # 5. Crear vistas
+        # 5. Crear vistas (con SettingsModel compartido)
         print("[App] Creando ForwardView...")
-        self.forward_view = ForwardView()
+        self.forward_view = ForwardView(settings_model=self.settings_model)
         
         print("[App] Creando SettingsView...")
         self.settings_view = SettingsView()
@@ -98,7 +103,7 @@ class SimuladorForwardApp:
             signals=self.signals
         )
         
-        # 7. Crear controlador (conecta vista automáticamente y recibe modelos de tabla)
+        # 7. Crear controladores
         print("[App] Creando ForwardController...")
         self.forward_controller = ForwardController(
             data_model=self.forward_data_model,
@@ -110,6 +115,12 @@ class SimuladorForwardApp:
             simulations_table_model=self.main_window._simulations_model,
             operations_table_model=self.main_window._operations_model,
             client_service=self.client_service
+        )
+        
+        print("[App] Creando SettingsController...")
+        self.settings_controller = SettingsController(
+            model=self.settings_model,
+            view=self.settings_view
         )
         
         print("\n[App] ✅ Aplicación inicializada correctamente")
