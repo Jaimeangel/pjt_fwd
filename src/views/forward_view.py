@@ -389,7 +389,7 @@ class ForwardView(QWidget):
         # Línea de crédito (columna 0)
         lbl_linea_title = QLabel("Línea de crédito")
         lbl_linea_title.setAlignment(Qt.AlignCenter)
-        self.lblLineaCredito = QLabel("$ 0.00")
+        self.lblLineaCredito = QLabel("—")  # Sin valor por defecto
         self.lblLineaCredito.setObjectName("lblLineaCredito")
         self.lblLineaCredito.setFont(font_value)
         self.lblLineaCredito.setAlignment(Qt.AlignCenter)
@@ -399,7 +399,7 @@ class ForwardView(QWidget):
         # Colchón interno (columna 1)
         lbl_colchon_title = QLabel("Colchón interno")
         lbl_colchon_title.setAlignment(Qt.AlignCenter)
-        self.lblColchonInterno = QLabel("0.0%")
+        self.lblColchonInterno = QLabel("—")  # Sin valor por defecto
         self.lblColchonInterno.setObjectName("lblColchonInterno")
         self.lblColchonInterno.setFont(font_value)
         self.lblColchonInterno.setAlignment(Qt.AlignCenter)
@@ -409,7 +409,7 @@ class ForwardView(QWidget):
         # Límite máximo (columna 2)
         lbl_limite_title = QLabel("Límite máximo permitido")
         lbl_limite_title.setAlignment(Qt.AlignCenter)
-        self.lblLimiteMax = QLabel("$ 0.00")
+        self.lblLimiteMax = QLabel("—")  # Sin valor por defecto
         self.lblLimiteMax.setObjectName("lblLimiteMax")
         self.lblLimiteMax.setFont(font_value)
         self.lblLimiteMax.setAlignment(Qt.AlignCenter)
@@ -898,6 +898,23 @@ class ForwardView(QWidget):
         self.lblLineaCredito.setText(f"$ {linea:,.0f}" if linea is not None else "—")
         self.lblColchonInterno.setText(f"{colchon_pct:.2f}%" if colchon_pct is not None else "—")
         self.lblLimiteMax.setText(f"$ {limite_max:,.0f}" if limite_max is not None else "—")
+    
+    def set_credit_params(self, linea: str, colchon: str, limite: str) -> None:
+        """
+        Actualiza los parámetros de crédito del cliente (línea, colchón, límite).
+        Acepta strings directos para máxima flexibilidad (ej. "—" o valores formateados).
+        
+        Args:
+            linea: Línea de crédito (texto formateado o "—")
+            colchon: Colchón de seguridad (texto formateado o "—")
+            limite: Límite máximo permitido (texto formateado o "—")
+        """
+        print(f"[ForwardView] set_credit_params: linea={linea}, colchon={colchon}, limite={limite}")
+        
+        # Asignar directamente los textos sin disparar eventos
+        self.lblLineaCredito.setText(linea)
+        self.lblColchonInterno.setText(colchon)
+        self.lblLimiteMax.setText(limite)
     
     def show_exposure(self, outstanding: float = None, total_con_simulacion: float = None,
                      disponibilidad: float = None) -> None:

@@ -40,7 +40,7 @@ class SettingsModel(QObject):
         # Parámetros Normativos
         self._lim_endeud: float = 10.0  # %
         self._lim_entfin: float = 30.0  # %
-        self._colchon: float = 5.0      # %
+        self.colchon_seguridad: float = 5.0  # % - Público para acceso directo
         
         # Líneas de Crédito Vigentes
         self.lineas_credito_df = pd.DataFrame()  # DataFrame con líneas de crédito cargadas
@@ -48,7 +48,7 @@ class SettingsModel(QObject):
         print("[SettingsModel] Inicializado con valores por defecto")
         print(f"   Patrimonio: $ {self._patrimonio_cop:,.2f} COP")
         print(f"   TRM: $ {self._trm:,.2f}")
-        print(f"   Colchón de seguridad: {self._colchon}%")
+        print(f"   Colchón de seguridad: {self.colchon_seguridad}%")
     
     # === Parámetros Generales ===
     
@@ -119,24 +119,29 @@ class SettingsModel(QObject):
         Args:
             v: Nuevo valor de colchón en porcentaje
         """
-        if v != self._colchon:
-            self._colchon = v
+        v = float(v or 0.0)
+        if v != self.colchon_seguridad:
+            self.colchon_seguridad = v
             self.colchonChanged.emit(v)
             print(f"[SettingsModel] Colchón actualizado: {v}%")
     
     def colchon(self) -> float:
         """Obtiene el colchón de seguridad (%)."""
-        return self._colchon
+        return self.colchon_seguridad
     
     # === Líneas de Crédito ===
     
     def set_lineas_credito(self, df: pd.DataFrame) -> None:
         """
         Establece el DataFrame de líneas de crédito vigentes.
+        Normaliza el NIT (elimina guiones) antes de almacenar.
         
         Args:
             df: DataFrame con columnas NIT, Contraparte, Grupo Conectado de Contrapartes, Monto (COP)
         """
+        # Normalizar NIT sin guiones
+        df = df.copy()
+        df["NIT"] = df["NIT"].astype(str).str.replace("-", "", regex=False).str.strip()
         self.lineas_credito_df = df
         print(f"[SettingsModel] Líneas de crédito actualizadas: {len(df)} registros")
     
@@ -181,6 +186,6 @@ class SettingsModel(QObject):
             "trm": self._trm,
             "lim_endeud": self._lim_endeud,
             "lim_entfin": self._lim_entfin,
-            "colchon": self._colchon
+            "colchon": self.colchon_seguridad
         }
 
