@@ -5,6 +5,7 @@ Gestiona la configuración y parámetros de la aplicación con señales Qt para 
 
 from PySide6.QtCore import QObject, Signal
 from typing import Optional, Dict, Any
+import pandas as pd
 
 
 class SettingsModel(QObject):
@@ -17,12 +18,14 @@ class SettingsModel(QObject):
     - Gestionar Patrimonio Técnico Vigente (COP)
     - Gestionar TRM vigente
     - Gestionar parámetros normativos
+    - Gestionar líneas de crédito vigentes
     - Notificar cambios en tiempo real mediante señales
     """
     
     # Señales para cambios en tiempo real
     patrimonioChanged = Signal(float)
     trmChanged = Signal(float)
+    colchonChanged = Signal(float)
     
     def __init__(self):
         """
@@ -39,9 +42,13 @@ class SettingsModel(QObject):
         self._lim_entfin: float = 30.0  # %
         self._colchon: float = 5.0      # %
         
+        # Líneas de Crédito Vigentes
+        self.lineas_credito_df = pd.DataFrame()  # DataFrame con líneas de crédito cargadas
+        
         print("[SettingsModel] Inicializado con valores por defecto")
         print(f"   Patrimonio: $ {self._patrimonio_cop:,.2f} COP")
         print(f"   TRM: $ {self._trm:,.2f}")
+        print(f"   Colchón de seguridad: {self._colchon}%")
     
     # === Parámetros Generales ===
     
@@ -106,12 +113,59 @@ class SettingsModel(QObject):
         return self._lim_entfin
     
     def set_colchon(self, v: float) -> None:
-        """Establece el colchón de seguridad (%)."""
-        self._colchon = v
+        """
+        Establece el colchón de seguridad (%) y emite señal si cambió.
+        
+        Args:
+            v: Nuevo valor de colchón en porcentaje
+        """
+        if v != self._colchon:
+            self._colchon = v
+            self.colchonChanged.emit(v)
+            print(f"[SettingsModel] Colchón actualizado: {v}%")
     
     def colchon(self) -> float:
         """Obtiene el colchón de seguridad (%)."""
         return self._colchon
+    
+    # === Líneas de Crédito ===
+    
+    def set_lineas_credito(self, df: pd.DataFrame) -> None:
+        """
+        Establece el DataFrame de líneas de crédito vigentes.
+        
+        Args:
+            df: DataFrame con columnas NIT, Contraparte, Grupo Conectado de Contrapartes, Monto (COP)
+        """
+        self.lineas_credito_df = df
+        print(f"[SettingsModel] Líneas de crédito actualizadas: {len(df)} registros")
+    
+    def get_linea_credito_por_nit(self, nit: str) -> Optional[Dict[str, Any]]:
+        """
+        Obtiene la línea de crédito para un NIT específico.
+        
+        Args:
+            nit: NIT del cliente (sin guiones)
+            
+        Returns:
+            Diccionario con datos del cliente o None si no se encuentra
+        """
+        if self.lineas_credito_df.empty:
+            return None
+        
+        # Buscar cliente por NIT
+        cliente_info = self.lineas_credito_df[self.lineas_credito_df["NIT"] == nit]
+        
+        if cliente_info.empty:
+            return None
+        
+        # Retornar primera coincidencia como diccionario
+        return {
+            "nit": str(cliente_info["NIT"].iloc[0]),
+            "contraparte": str(cliente_info["Contraparte"].iloc[0]),
+            "grupo": str(cliente_info["Grupo Conectado de Contrapartes"].iloc[0]),
+            "monto_cop": float(cliente_info["Monto (COP)"].iloc[0])
+        }
     
     # === Métodos de utilidad ===
     

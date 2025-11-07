@@ -27,14 +27,18 @@ class SettingsView(QWidget):
     # Señales personalizadas
     load_lineas_credito_requested = Signal(str)  # file_path
     
-    def __init__(self, parent: QWidget = None):
+    def __init__(self, parent: QWidget = None, settings_model=None):
         """
         Inicializa la vista de configuración.
         
         Args:
             parent: Widget padre (opcional)
+            settings_model: Modelo compartido de configuración (opcional)
         """
         super().__init__(parent)
+        
+        # Referencia al modelo de configuración compartido
+        self._settings_model = settings_model
         
         # Almacenar DataFrame de líneas de crédito
         self.df_lineas_credito = None
@@ -347,9 +351,14 @@ class SettingsView(QWidget):
             if filas_antes > filas_despues:
                 print(f"   ⚠️  {filas_antes - filas_despues} filas eliminadas por NIT o Contraparte vacío")
             
-            # Guardar el DataFrame temporalmente
+            # Guardar el DataFrame temporalmente en la vista
             self.df_lineas_credito = df
             print(f"   ✓ DataFrame guardado en memoria ({len(df)} filas)")
+            
+            # Guardar el DataFrame en el modelo compartido (si existe)
+            if self._settings_model:
+                self._settings_model.set_lineas_credito(df)
+                print(f"   ✓ DataFrame guardado en SettingsModel")
             
             # Mostrar los datos en la tabla
             self.mostrar_lineas_credito(df)

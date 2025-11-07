@@ -91,7 +91,7 @@ class ForwardView(QWidget):
     def _connect_settings_model(self):
         """
         Conecta las señales del SettingsModel para actualización en tiempo real
-        de Patrimonio y TRM.
+        de Patrimonio, TRM y Colchón.
         """
         if self._settings_model:
             # Suscribirse a cambios de patrimonio
@@ -104,6 +104,9 @@ class ForwardView(QWidget):
                 lambda v: self.lblTRM.setText(f"$ {v:,.2f}")
             )
             
+            # Suscribirse a cambios de colchón para actualizar límite máximo automáticamente
+            self._settings_model.colchonChanged.connect(self._actualizar_limite_maximo)
+            
             # Establecer valores iniciales
             self.lblPatrimonio.setText(f"$ {self._settings_model.patrimonio():,.2f}")
             self.lblTRM.setText(f"$ {self._settings_model.trm():,.2f}")
@@ -111,6 +114,37 @@ class ForwardView(QWidget):
             print("[ForwardView] Conectado a SettingsModel para actualización en tiempo real")
         else:
             print("[ForwardView] SettingsModel no proporcionado, usando valores por defecto")
+    
+    def _actualizar_limite_maximo(self, nuevo_colchon: float) -> None:
+        """
+        Actualiza automáticamente el límite máximo cuando cambia el colchón de seguridad.
+        
+        Args:
+            nuevo_colchon: Nuevo valor del colchón en porcentaje
+        """
+        try:
+            # Obtener línea de crédito actual (remover formato)
+            linea_texto = self.lblLineaCredito.text().replace(",", "").replace("$", "").strip()
+            
+            if linea_texto == "—" or not linea_texto:
+                # No hay línea de crédito configurada
+                return
+            
+            linea_credito = float(linea_texto)
+            
+            # Calcular nuevo límite máximo
+            limite = linea_credito * (1 - (nuevo_colchon / 100))
+            
+            # Actualizar labels
+            self.lblColchonInterno.setText(f"{nuevo_colchon:.2f}%")
+            self.lblLimiteMaximo.setText(f"$ {limite:,.0f}")
+            
+            print(f"[ForwardView] Límite máximo actualizado: $ {limite:,.0f} (colchón {nuevo_colchon}%)")
+        
+        except Exception as e:
+            # Si hay error, simplemente actualizar el colchón sin recalcular límite
+            self.lblColchonInterno.setText(f"{nuevo_colchon:.2f}%")
+            print(f"[ForwardView] No se pudo recalcular límite máximo: {e}")
     
     def _setup_ui(self):
         """Configura la interfaz de usuario completa."""

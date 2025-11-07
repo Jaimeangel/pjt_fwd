@@ -93,7 +93,7 @@ class SimuladorForwardApp:
         self.forward_view = ForwardView(settings_model=self.settings_model)
         
         print("[App] Creando SettingsView...")
-        self.settings_view = SettingsView()
+        self.settings_view = SettingsView(settings_model=self.settings_model)
         
         # 6. Crear ventana principal (conecta señales globales y crea modelos de tabla)
         print("[App] Creando MainWindow con Top Navigation Bar...")
