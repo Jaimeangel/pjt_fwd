@@ -6,7 +6,8 @@ Interfaz de usuario para gestionar la configuración del sistema.
 from PySide6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QLabel, 
     QPushButton, QGroupBox, QFormLayout,
-    QLineEdit, QDoubleSpinBox, QFileDialog, QTableView, QHeaderView, QAbstractItemView
+    QLineEdit, QDoubleSpinBox, QFileDialog, QTableWidget, QTableWidgetItem,
+    QHeaderView, QAbstractItemView, QMessageBox
 )
 from PySide6.QtCore import Signal, Qt
 from PySide6.QtGui import QFont
@@ -34,6 +35,10 @@ class SettingsView(QWidget):
             parent: Widget padre (opcional)
         """
         super().__init__(parent)
+        
+        # Almacenar DataFrame de líneas de crédito
+        self.df_lineas_credito = None
+        
         self._setup_ui()
         self._connect_signals()
         
@@ -178,13 +183,13 @@ class SettingsView(QWidget):
         header_layout.addStretch()
         
         self.btnCargarLineas = QPushButton("📁 Cargar archivo...")
-        self.btnCargarLineas.clicked.connect(self._on_cargar_lineas_clicked)
+        self.btnCargarLineas.clicked.connect(self.cargar_csv_lineas_credito)
         header_layout.addWidget(self.btnCargarLineas)
         
         layout.addLayout(header_layout)
         
-        # Tabla de líneas de crédito
-        self.tblLineasCredito = QTableView()
+        # Tabla de líneas de crédito (QTableWidget para manejo directo)
+        self.tblLineasCredito = QTableWidget()
         self.tblLineasCredito.setObjectName("tblLineasCredito")
         
         # Configurar tabla
@@ -209,21 +214,139 @@ class SettingsView(QWidget):
         # Las conexiones se manejan directamente en los widgets
         pass
     
-    def _on_cargar_lineas_clicked(self):
-        """Handler para el botón Cargar archivo de líneas de crédito."""
+    def cargar_csv_lineas_credito(self):
+        """
+        Carga el archivo CSV de líneas de crédito y muestra los datos en la tabla.
+        
+        Reglas:
+        - CSV delimitado por ';'
+        - Columnas requeridas: NIT, Contraparte, Grupo Conectado de Contrapartes, Monto (COP)
+        - NIT: eliminar guiones "-"
+        - Monto (COP): está en miles de millones → multiplicar por 1_000_000_000
+        """
         print("[SettingsView] Abriendo dialogo para cargar lineas de credito...")
         
         file_path, _ = QFileDialog.getOpenFileName(
             self,
-            "Seleccionar archivo de Líneas de Crédito",
+            "Seleccionar archivo de líneas de crédito",
             "",
-            "Archivos CSV (*.csv);;Todos los archivos (*.*)"
+            "Archivos CSV (*.csv);;Todos los archivos (*)"
         )
         
-        if file_path:
-            print(f"[SettingsView] Archivo seleccionado: {file_path}")
-            # Emitir señal para que el controller maneje la carga
-            self.load_lineas_credito_requested.emit(file_path)
+        if not file_path:
+            print("[SettingsView] Carga cancelada por el usuario")
+            return
+        
+        try:
+            import pandas as pd
+            
+            print(f"[SettingsView] Cargando archivo: {file_path}")
+            
+            # Leer CSV con delimitador ';' y todas las columnas como string
+            df = pd.read_csv(file_path, delimiter=";", dtype=str)
+            
+            # Columnas esperadas
+            columnas_esperadas = ["NIT", "Contraparte", "Grupo Conectado de Contrapartes", "Monto (COP)"]
+            
+            # Validar columnas requeridas
+            if not all(col in df.columns for col in columnas_esperadas):
+                print(f"   ❌ Error: Columnas faltantes en el archivo")
+                print(f"      Esperadas: {columnas_esperadas}")
+                print(f"      Encontradas: {list(df.columns)}")
+                QMessageBox.warning(
+                    self,
+                    "Error de formato",
+                    "El archivo no contiene las columnas requeridas:\n"
+                    "NIT, Contraparte, Grupo Conectado de Contrapartes, Monto (COP)."
+                )
+                return
+            
+            print(f"   ✓ Columnas validadas correctamente")
+            print(f"   → Filas leídas: {len(df)}")
+            
+            # 🔹 Limpiar y normalizar la columna NIT (quitar guiones)
+            df["NIT"] = df["NIT"].str.replace("-", "", regex=False).str.strip()
+            print(f"   ✓ NITs normalizados (guiones eliminados)")
+            
+            # 🔹 Convertir monto de miles de millones a valor real (COP)
+            df["Monto (COP)"] = pd.to_numeric(df["Monto (COP)"], errors="coerce") * 1_000_000_000
+            print(f"   ✓ Montos convertidos (miles de millones → COP reales)")
+            
+            # 🔹 Limpiar filas sin NIT o Contraparte
+            filas_antes = len(df)
+            df = df.dropna(subset=["NIT", "Contraparte"])
+            filas_despues = len(df)
+            
+            if filas_antes > filas_despues:
+                print(f"   ⚠️  {filas_antes - filas_despues} filas eliminadas por NIT o Contraparte vacío")
+            
+            # Guardar el DataFrame temporalmente
+            self.df_lineas_credito = df
+            print(f"   ✓ DataFrame guardado en memoria ({len(df)} filas)")
+            
+            # Mostrar los datos en la tabla
+            self.mostrar_lineas_credito(df)
+            
+            # Mensaje de éxito
+            QMessageBox.information(
+                self,
+                "Carga exitosa",
+                f"El archivo de líneas de crédito fue cargado correctamente.\n\n"
+                f"Líneas de crédito cargadas: {len(df)}"
+            )
+            
+            print(f"   ✅ Carga completada exitosamente")
+        
+        except Exception as e:
+            print(f"   ❌ Error al cargar archivo: {e}")
+            import traceback
+            traceback.print_exc()
+            QMessageBox.critical(
+                self,
+                "Error al cargar",
+                f"Ocurrió un error al leer el archivo:\n{str(e)}"
+            )
+    
+    def mostrar_lineas_credito(self, df):
+        """
+        Muestra los datos del DataFrame de líneas de crédito en la tabla.
+        
+        Args:
+            df: DataFrame de pandas con las líneas de crédito
+        """
+        print(f"[SettingsView] Mostrando {len(df)} líneas de crédito en la tabla...")
+        
+        # Limpiar tabla
+        self.tblLineasCredito.setRowCount(0)
+        self.tblLineasCredito.setColumnCount(4)
+        
+        # Configurar encabezados
+        self.tblLineasCredito.setHorizontalHeaderLabels(["NIT", "Contraparte", "Grupo", "Monto (COP)"])
+        
+        # Insertar filas
+        for i, row in df.iterrows():
+            self.tblLineasCredito.insertRow(i)
+            
+            # NIT (string)
+            self.tblLineasCredito.setItem(i, 0, QTableWidgetItem(str(row["NIT"])))
+            
+            # Contraparte (string)
+            self.tblLineasCredito.setItem(i, 1, QTableWidgetItem(str(row["Contraparte"])))
+            
+            # Grupo Conectado (string)
+            self.tblLineasCredito.setItem(i, 2, QTableWidgetItem(str(row["Grupo Conectado de Contrapartes"])))
+            
+            # Monto (COP) - formato numérico con separadores de miles
+            monto_value = float(row["Monto (COP)"])
+            monto_formatted = f"{monto_value:,.2f}"
+            self.tblLineasCredito.setItem(i, 3, QTableWidgetItem(monto_formatted))
+        
+        # Ajustar columnas para distribución uniforme
+        header = self.tblLineasCredito.horizontalHeader()
+        header.setStretchLastSection(True)
+        header.setSectionResizeMode(QHeaderView.Stretch)
+        
+        print(f"   ✓ Tabla actualizada con {len(df)} filas")
     
     def load_parametros_generales(self, patrimonio_cop: float, trm: float) -> None:
         """
@@ -305,19 +428,16 @@ class SettingsView(QWidget):
     
     def set_lineas_credito_model(self, model) -> None:
         """
-        Establece el modelo de la tabla de líneas de crédito.
+        [OBSOLETO] Este método ya no es necesario.
+        
+        La tabla de líneas de crédito ahora usa QTableWidget y se actualiza
+        directamente desde el método cargar_csv_lineas_credito().
         
         Args:
-            model: Modelo QAbstractTableModel con los datos
+            model: Modelo QAbstractTableModel (ignorado)
         """
-        self.tblLineasCredito.setModel(model)
-        
-        # Reconfigurar el header después de establecer el modelo
-        header = self.tblLineasCredito.horizontalHeader()
-        header.setStretchLastSection(True)
-        header.setSectionResizeMode(QHeaderView.Stretch)
-        
-        print(f"[SettingsView] Modelo de lineas de credito establecido")
+        print("[SettingsView] set_lineas_credito_model está obsoleto - use cargar_csv_lineas_credito()")
+        pass
     
     def _apply_styles(self):
         """Aplica estilos CSS corporativos sobrios a la vista."""
