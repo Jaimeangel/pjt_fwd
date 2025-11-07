@@ -217,12 +217,16 @@ class SettingsView(QWidget):
     def cargar_csv_lineas_credito(self):
         """
         Carga el archivo CSV de líneas de crédito y muestra los datos en la tabla.
+        Versión robusta que soporta múltiples codificaciones y variaciones en encabezados.
         
         Reglas:
         - CSV delimitado por ';'
         - Columnas requeridas: NIT, Contraparte, Grupo Conectado de Contrapartes, Monto (COP)
         - NIT: eliminar guiones "-"
         - Monto (COP): está en miles de millones → multiplicar por 1_000_000_000
+        - Soporta UTF-8, UTF-8 con BOM, y Latin-1
+        - Normaliza nombres de columnas (elimina BOM, NBSP, espacios extras)
+        - Reconoce variaciones en nombres de columnas (case-insensitive)
         """
         print("[SettingsView] Abriendo dialogo para cargar lineas de credito...")
         
@@ -239,25 +243,82 @@ class SettingsView(QWidget):
         
         try:
             import pandas as pd
+            import re
             
             print(f"[SettingsView] Cargando archivo: {file_path}")
             
-            # Leer CSV con delimitador ';' y todas las columnas como string
-            df = pd.read_csv(file_path, delimiter=";", dtype=str)
+            # 🔹 Función de lectura robusta
+            def leer_csv_robusto(path):
+                """
+                Lee un CSV intentando múltiples codificaciones.
+                Soporta UTF-8, UTF-8 con BOM, y Latin-1.
+                """
+                df = None
+                # Intentar con utf-8-sig (maneja BOM automáticamente) y latin1
+                for enc in ("utf-8-sig", "latin1"):
+                    try:
+                        print(f"      Intentando con codificación: {enc}")
+                        df = pd.read_csv(
+                            path,
+                            sep=";",
+                            engine="python",
+                            encoding=enc,
+                            dtype=str,
+                            keep_default_na=False  # Evita convertir strings vacíos a NaN
+                        )
+                        print(f"      ✓ Lectura exitosa con {enc}")
+                        break
+                    except Exception as e:
+                        print(f"      ✗ Falló con {enc}: {e}")
+                        df = None
+                
+                if df is None:
+                    raise ValueError("No se pudo leer el CSV con ninguna codificación estándar (utf-8-sig o latin1).")
+                
+                # 🔹 Normalizar nombres de columnas
+                def normalizar(c):
+                    """Normaliza un nombre de columna eliminando caracteres especiales."""
+                    c = c.replace("\ufeff", "")        # Eliminar BOM (Byte Order Mark)
+                    c = c.replace("\xa0", " ")         # Eliminar NBSP (Non-Breaking Space)
+                    c = re.sub(r"\s+", " ", c).strip() # Colapsar múltiples espacios en uno
+                    return c
+                
+                df.columns = [normalizar(c) for c in df.columns]
+                print(f"      ✓ Columnas normalizadas: {list(df.columns)}")
+                
+                return df
+            
+            # Leer archivo con robustez
+            df = leer_csv_robusto(file_path)
+            
+            # 🔹 Normalizar headers usando alias (case-insensitive)
+            alias = {
+                "nit": "NIT",
+                "contraparte": "Contraparte",
+                "grupo conectado de contrapartes": "Grupo Conectado de Contrapartes",
+                "monto (cop)": "Monto (COP)",
+                "monto(cop)": "Monto (COP)",  # Sin espacio antes del paréntesis
+                "monto": "Monto (COP)",        # Solo "Monto"
+            }
+            
+            # Mapear columnas según alias (insensible a mayúsculas/minúsculas)
+            df.rename(columns=lambda c: alias.get(c.lower(), c), inplace=True)
+            print(f"   ✓ Columnas después de mapeo: {list(df.columns)}")
             
             # Columnas esperadas
             columnas_esperadas = ["NIT", "Contraparte", "Grupo Conectado de Contrapartes", "Monto (COP)"]
             
             # Validar columnas requeridas
-            if not all(col in df.columns for col in columnas_esperadas):
+            faltantes = [col for col in columnas_esperadas if col not in df.columns]
+            if faltantes:
                 print(f"   ❌ Error: Columnas faltantes en el archivo")
-                print(f"      Esperadas: {columnas_esperadas}")
-                print(f"      Encontradas: {list(df.columns)}")
+                print(f"      Faltantes: {faltantes}")
+                print(f"      Detectadas: {list(df.columns)}")
                 QMessageBox.warning(
                     self,
                     "Error de formato",
-                    "El archivo no contiene las columnas requeridas:\n"
-                    "NIT, Contraparte, Grupo Conectado de Contrapartes, Monto (COP)."
+                    f"El archivo no contiene las columnas requeridas:\n{', '.join(faltantes)}\n\n"
+                    f"Columnas detectadas: {', '.join(df.columns)}"
                 )
                 return
             
