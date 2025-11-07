@@ -137,7 +137,7 @@ class ForwardView(QWidget):
             
             # Actualizar labels
             self.lblColchonInterno.setText(f"{nuevo_colchon:.2f}%")
-            self.lblLimiteMaximo.setText(f"$ {limite:,.0f}")
+            self.lblLimiteMax.setText(f"$ {limite:,.0f}")
             
             print(f"[ForwardView] Límite máximo actualizado: $ {limite:,.0f} (colchón {nuevo_colchon}%)")
         
@@ -881,22 +881,23 @@ class ForwardView(QWidget):
                 f"border: 1px solid #d1d9e0; border-radius: 4px; padding: 8px; }}"
             )
     
-    def show_client_limits(self, linea: float, colchon_pct: float,
-                          limite_max: float) -> None:
+    def show_client_limits(self, linea: float = None, colchon_pct: float = None,
+                          limite_max: float = None) -> None:
         """
         Actualiza la información de límites del cliente.
         
         Args:
-            linea: Línea de crédito aprobada
-            colchon_pct: Porcentaje de colchón
-            limite_max: Límite máximo
+            linea: Línea de crédito aprobada (None si no está disponible)
+            colchon_pct: Porcentaje de colchón (None si no está disponible)
+            limite_max: Límite máximo (None si no está disponible)
         """
         print(f"[ForwardView] show_client_limits: linea={linea}, "
               f"colchon={colchon_pct}, limite_max={limite_max}")
         
-        self.lblLineaCredito.setText(f"$ {linea:,.2f}")
-        self.lblColchonInterno.setText(f"{colchon_pct:.1f}%")
-        self.lblLimiteMax.setText(f"$ {limite_max:,.2f}")
+        # Actualizar con formato o "—" si es None
+        self.lblLineaCredito.setText(f"$ {linea:,.0f}" if linea is not None else "—")
+        self.lblColchonInterno.setText(f"{colchon_pct:.2f}%" if colchon_pct is not None else "—")
+        self.lblLimiteMax.setText(f"$ {limite_max:,.0f}" if limite_max is not None else "—")
     
     def show_exposure(self, outstanding: float = None, total_con_simulacion: float = None,
                      disponibilidad: float = None) -> None:

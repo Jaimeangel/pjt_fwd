@@ -114,7 +114,8 @@ class SimuladorForwardApp:
             signals=self.signals,
             simulations_table_model=self.main_window._simulations_model,
             operations_table_model=self.main_window._operations_model,
-            client_service=self.client_service
+            client_service=self.client_service,
+            settings_model=self.settings_model  # Modelo compartido para líneas de crédito
         )
         
         print("[App] Creando SettingsController...")

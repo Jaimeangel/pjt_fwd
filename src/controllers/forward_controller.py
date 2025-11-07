@@ -20,7 +20,7 @@ class ForwardController:
     def __init__(self, data_model=None, simulations_model=None, view=None,
                  pricing_service=None, exposure_service=None, signals=None,
                  simulations_table_model=None, operations_table_model=None, client_service=None,
-                 simulation_processor=None):
+                 simulation_processor=None, settings_model=None):
         """
         Inicializa el controlador Forward.
         
@@ -35,6 +35,7 @@ class ForwardController:
             operations_table_model: Instancia de OperationsTableModel (Qt)
             client_service: Instancia de ClientService
             simulation_processor: Instancia de ForwardSimulationProcessor
+            settings_model: Instancia de SettingsModel (configuración compartida)
         """
         self._data_model = data_model
         self._simulations_model = simulations_model
@@ -45,6 +46,7 @@ class ForwardController:
         self._simulations_table_model = simulations_table_model
         self._operations_table_model = operations_table_model
         self._client_service = client_service
+        self._settings_model = settings_model
         
         # Procesador de simulaciones
         if simulation_processor:
@@ -546,22 +548,39 @@ class ForwardController:
             nombre = self._data_model.get_nombre_by_nit(nit)
             self._data_model.set_current_client(nit, nombre)
         
-        # Obtener límites del cliente usando ClientService (mock)
-        if self._client_service:
-            limits = self._client_service.get_client_limits(nit)
+        # 🔹 Buscar cliente en líneas de crédito (SettingsModel)
+        if self._settings_model:
+            cliente_info = self._settings_model.get_linea_credito_por_nit(nit)
             
-            print(f"   → Límites del cliente:")
-            print(f"      Línea de crédito: $ {limits['linea_credito']:,.2f}")
-            print(f"      Colchón interno: {limits['colchon_pct']:.1f}%")
-            print(f"      Límite máximo: $ {limits['limite_max']:,.2f}")
-            
-            # Actualizar vista con límites
-            if self._view:
-                self._view.show_client_limits(
-                    linea=limits['linea_credito'],
-                    colchon_pct=limits['colchon_pct'],
-                    limite_max=limits['limite_max']
-                )
+            if cliente_info:
+                # Cliente encontrado en líneas de crédito
+                linea_credito = cliente_info['monto_cop']
+                colchon = self._settings_model.colchon()  # valor % (ej. 5.0)
+                limite_maximo = linea_credito * (1 - (colchon / 100))
+                
+                print(f"   → Límites del cliente (desde SettingsModel):")
+                print(f"      Línea de crédito: $ {linea_credito:,.0f}")
+                print(f"      Colchón interno: {colchon:.2f}%")
+                print(f"      Límite máximo: $ {limite_maximo:,.0f}")
+                
+                # 🔹 Actualizar vista con límites
+                if self._view:
+                    self._view.show_client_limits(
+                        linea=linea_credito,
+                        colchon_pct=colchon,
+                        limite_max=limite_maximo
+                    )
+            else:
+                # Cliente NO encontrado en líneas de crédito
+                print(f"   ⚠️  Cliente con NIT {nit} no encontrado en líneas de crédito.")
+                if self._view:
+                    self._view.show_client_limits(
+                        linea=None,
+                        colchon_pct=None,
+                        limite_max=None
+                    )
+        else:
+            print(f"   ⚠️  SettingsModel no disponible, no se pueden cargar límites del cliente.")
         
         # Obtener exposición crediticia del cliente (outstanding)
         outstanding = 0.0
