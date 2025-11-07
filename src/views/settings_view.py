@@ -329,9 +329,31 @@ class SettingsView(QWidget):
             df["NIT"] = df["NIT"].str.replace("-", "", regex=False).str.strip()
             print(f"   ✓ NITs normalizados (guiones eliminados)")
             
-            # 🔹 Convertir monto de miles de millones a valor real (COP)
-            df["Monto (COP)"] = pd.to_numeric(df["Monto (COP)"], errors="coerce") * 1_000_000_000
-            print(f"   ✓ Montos convertidos (miles de millones → COP reales)")
+            # 🔹 Limpiar y convertir Monto (COP): vienen como strings con comas ("12,557")
+            monto_col = "Monto (COP)"
+            
+            # 1️⃣ Normalizar: eliminar espacios, letras y símbolos no numéricos (excepto dígitos, coma, punto y signo)
+            df[monto_col] = (
+                df[monto_col]
+                    .astype(str)
+                    .str.strip()
+                    .str.replace(r"[^\d,.\-]", "", regex=True)
+            )
+            
+            # 2️⃣ Quitar separadores de miles (comas, espacios)
+            df[monto_col] = (
+                df[monto_col]
+                    .str.replace(",", "", regex=False)
+                    .str.replace(" ", "", regex=False)
+            )
+            
+            # 3️⃣ Convertir a número, reemplazando NaN con 0
+            df[monto_col] = pd.to_numeric(df[monto_col], errors="coerce").fillna(0)
+            
+            # 4️⃣ Escalar: los valores vienen en miles de millones, convertir a COP reales
+            df[monto_col] = df[monto_col] * 1_000_000_000
+            
+            print(f"   ✓ Montos limpiados y convertidos (miles de millones → COP reales)")
             
             # 🔹 Limpiar filas sin NIT o Contraparte
             filas_antes = len(df)
