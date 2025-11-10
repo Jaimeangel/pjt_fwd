@@ -22,75 +22,84 @@ class SettingsModel(QObject):
     - Notificar cambios en tiempo real mediante señales
     """
     
-    # Señales para cambios en tiempo real
-    patrimonioChanged = Signal(float)
-    trmChanged = Signal(float)
-    colchonChanged = Signal(float)
+    # Señales para cambios en tiempo real (pueden emitir float o None)
+    patrimonioChanged = Signal(object)  # float | None
+    trmChanged = Signal(object)         # float | None
+    colchonChanged = Signal(object)     # float | None
+    lineasCreditoChanged = Signal()     # Aviso de cambios en DataFrame
     
     def __init__(self):
         """
-        Inicializa el modelo de configuración con valores por defecto.
+        Inicializa el modelo de configuración SIN valores por defecto.
+        Todos los parámetros inician en None hasta que el usuario los configure.
         """
         super().__init__()
         
-        # Parámetros Generales
-        self._patrimonio_cop: float = 50_000_000_000.00  # Default: 50 mil millones COP
-        self._trm: float = 4200.50                        # Default: 4200.50 COP/USD
+        # Parámetros Generales (sin defaults)
+        self._patrimonio_cop: Optional[float] = None
+        self._trm: Optional[float] = None
         
-        # Parámetros Normativos
-        self._lim_endeud: float = 10.0  # %
-        self._lim_entfin: float = 30.0  # %
-        self.colchon_seguridad: float = 5.0  # % - Público para acceso directo
+        # Parámetros Normativos (sin defaults)
+        self._lim_endeud: Optional[float] = None
+        self._lim_entfin: Optional[float] = None
+        self.colchon_seguridad: Optional[float] = None  # Sin valor por defecto
         
         # Líneas de Crédito Vigentes
         self.lineas_credito_df = pd.DataFrame()  # DataFrame con líneas de crédito cargadas
         
-        print("[SettingsModel] Inicializado con valores por defecto")
-        print(f"   Patrimonio: $ {self._patrimonio_cop:,.2f} COP")
-        print(f"   TRM: $ {self._trm:,.2f}")
-        print(f"   Colchón de seguridad: {self.colchon_seguridad}%")
+        print("[SettingsModel] Inicializado SIN valores por defecto (todos en None)")
     
     # === Parámetros Generales ===
     
-    def set_patrimonio(self, v: float) -> None:
+    def set_patrimonio(self, v) -> None:
         """
         Establece el Patrimonio Técnico Vigente y emite señal si cambió.
+        Acepta None o float.
         
         Args:
-            v: Nuevo valor de patrimonio en COP
+            v: Nuevo valor de patrimonio en COP (float o None)
         """
+        v = None if v is None else float(v)
         if v != self._patrimonio_cop:
             self._patrimonio_cop = v
             self.patrimonioChanged.emit(v)
-            print(f"[SettingsModel] Patrimonio actualizado: $ {v:,.2f} COP")
+            if v is not None:
+                print(f"[SettingsModel] Patrimonio actualizado: $ {v:,.2f} COP")
+            else:
+                print("[SettingsModel] Patrimonio limpiado (None)")
     
-    def patrimonio(self) -> float:
+    def patrimonio(self) -> Optional[float]:
         """
         Obtiene el Patrimonio Técnico Vigente.
         
         Returns:
-            Valor de patrimonio en COP
+            Valor de patrimonio en COP o None si no está configurado
         """
         return self._patrimonio_cop
     
-    def set_trm(self, v: float) -> None:
+    def set_trm(self, v) -> None:
         """
         Establece la TRM vigente y emite señal si cambió.
+        Acepta None o float.
         
         Args:
-            v: Nuevo valor de TRM en COP/USD
+            v: Nuevo valor de TRM en COP/USD (float o None)
         """
+        v = None if v is None else float(v)
         if v != self._trm:
             self._trm = v
             self.trmChanged.emit(v)
-            print(f"[SettingsModel] TRM actualizada: $ {v:,.2f}")
+            if v is not None:
+                print(f"[SettingsModel] TRM actualizada: $ {v:,.2f}")
+            else:
+                print("[SettingsModel] TRM limpiada (None)")
     
-    def trm(self) -> float:
+    def trm(self) -> Optional[float]:
         """
         Obtiene la TRM vigente.
         
         Returns:
-            Valor de TRM en COP/USD
+            Valor de TRM en COP/USD o None si no está configurado
         """
         return self._trm
     
@@ -112,21 +121,30 @@ class SettingsModel(QObject):
         """Obtiene el límite máximo de concentración con entidades financieras (%)."""
         return self._lim_entfin
     
-    def set_colchon(self, v: float) -> None:
+    def set_colchon(self, v) -> None:
         """
         Establece el colchón de seguridad (%) y emite señal si cambió.
+        Acepta None o float.
         
         Args:
-            v: Nuevo valor de colchón en porcentaje
+            v: Nuevo valor de colchón en porcentaje (float o None)
         """
-        v = float(v or 0.0)
+        v = None if v is None else float(v)
         if v != self.colchon_seguridad:
             self.colchon_seguridad = v
             self.colchonChanged.emit(v)
-            print(f"[SettingsModel] Colchón actualizado: {v}%")
+            if v is not None:
+                print(f"[SettingsModel] Colchón actualizado: {v}%")
+            else:
+                print("[SettingsModel] Colchón limpiado (None)")
     
-    def colchon(self) -> float:
-        """Obtiene el colchón de seguridad (%)."""
+    def colchon(self) -> Optional[float]:
+        """
+        Obtiene el colchón de seguridad (%).
+        
+        Returns:
+            Valor de colchón en porcentaje o None si no está configurado
+        """
         return self.colchon_seguridad
     
     # === Líneas de Crédito ===
@@ -143,6 +161,7 @@ class SettingsModel(QObject):
         df = df.copy()
         df["NIT"] = df["NIT"].astype(str).str.replace("-", "", regex=False).str.strip()
         self.lineas_credito_df = df
+        self.lineasCreditoChanged.emit()
         print(f"[SettingsModel] Líneas de crédito actualizadas: {len(df)} registros")
     
     def get_linea_credito_por_nit(self, nit: str) -> Optional[Dict[str, Any]]:

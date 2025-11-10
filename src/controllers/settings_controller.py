@@ -40,7 +40,7 @@ class SettingsController:
     
     def _load_initial_values(self) -> None:
         """
-        Carga los valores iniciales del modelo en la vista.
+        Carga los valores iniciales del modelo en la vista SOLO si existen (no son None).
         Bloquea señales durante la carga para evitar actualizaciones circulares.
         """
         if not self._model or not self._view:
@@ -55,12 +55,43 @@ class SettingsController:
         self._view.inpLimEntFin.blockSignals(True)
         self._view.inpColchon.blockSignals(True)
         
-        # Cargar valores
-        self._view.inpPatrimonio.setValue(self._model.patrimonio())
-        self._view.inpTRM.setValue(self._model.trm())
-        self._view.inpLimEndeud.setValue(self._model.lim_endeud())
-        self._view.inpLimEntFin.setValue(self._model.lim_entfin())
-        self._view.inpColchon.setValue(self._model.colchon())
+        # Cargar valores SOLO si no son None
+        pat = self._model.patrimonio()
+        if pat is not None:
+            self._view.inpPatrimonio.setValue(pat)
+            print(f"   Patrimonio: $ {pat:,.2f}")
+        else:
+            self._view.inpPatrimonio.clear()
+            print("   Patrimonio: (no configurado)")
+        
+        trm = self._model.trm()
+        if trm is not None:
+            self._view.inpTRM.setValue(trm)
+            print(f"   TRM: $ {trm:,.2f}")
+        else:
+            self._view.inpTRM.clear()
+            print("   TRM: (no configurado)")
+        
+        colchon = self._model.colchon()
+        if colchon is not None:
+            self._view.inpColchon.setValue(colchon)
+            print(f"   Colchón: {colchon}%")
+        else:
+            self._view.inpColchon.clear()
+            print("   Colchón: (no configurado)")
+        
+        # Otros parámetros normativos (pueden o no tener defaults)
+        lim_end = self._model.lim_endeud()
+        if lim_end is not None:
+            self._view.inpLimEndeud.setValue(lim_end)
+        else:
+            self._view.inpLimEndeud.clear()
+        
+        lim_ent = self._model.lim_entfin()
+        if lim_ent is not None:
+            self._view.inpLimEntFin.setValue(lim_ent)
+        else:
+            self._view.inpLimEntFin.clear()
         
         # Desbloquear señales
         self._view.inpPatrimonio.blockSignals(False)
@@ -68,9 +99,6 @@ class SettingsController:
         self._view.inpLimEndeud.blockSignals(False)
         self._view.inpLimEntFin.blockSignals(False)
         self._view.inpColchon.blockSignals(False)
-        
-        print(f"   Patrimonio: $ {self._model.patrimonio():,.2f}")
-        print(f"   TRM: $ {self._model.trm():,.2f}")
     
     def _connect_signals(self) -> None:
         """
