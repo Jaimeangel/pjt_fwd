@@ -90,73 +90,18 @@ class ForwardView(QWidget):
     
     def _connect_settings_model(self):
         """
-        Conecta las señales del SettingsModel para actualización en tiempo real
-        de Patrimonio, TRM y Colchón.
+        Conecta las señales del SettingsModel para actualización en tiempo real.
+        
+        Nota: Patrimonio, TRM y Colchón fueron eliminados del modelo global.
+        Ahora estos valores son por contraparte y vienen del CSV de líneas de crédito.
         """
         if self._settings_model:
-            # Suscribirse a cambios de patrimonio (maneja None)
-            self._settings_model.patrimonioChanged.connect(
-                lambda v: self.lblPatrimonio.setText(f"$ {v:,.2f} COP" if v is not None else "—")
-            )
+            # Suscribirse a cambios en las líneas de crédito (para futuras actualizaciones)
+            # self._settings_model.lineasCreditoChanged.connect(...)
             
-            # Suscribirse a cambios de TRM (maneja None)
-            self._settings_model.trmChanged.connect(
-                lambda v: self.lblTRM.setText(f"$ {v:,.2f}" if v is not None else "—")
-            )
-            
-            # Suscribirse a cambios de colchón para actualizar límite máximo automáticamente
-            self._settings_model.colchonChanged.connect(self._actualizar_limite_maximo)
-            
-            # Establecer valores iniciales (o "—" si son None)
-            pat = self._settings_model.patrimonio()
-            trm = self._settings_model.trm()
-            self.lblPatrimonio.setText(f"$ {pat:,.2f} COP" if pat is not None else "—")
-            self.lblTRM.setText(f"$ {trm:,.2f}" if trm is not None else "—")
-            
-            print("[ForwardView] Conectado a SettingsModel para actualización en tiempo real")
+            print("[ForwardView] Conectado a SettingsModel")
         else:
-            print("[ForwardView] SettingsModel no proporcionado, valores en '—'")
-    
-    def _actualizar_limite_maximo(self, nuevo_colchon) -> None:
-        """
-        Actualiza automáticamente el límite máximo cuando cambia el colchón de seguridad.
-        Maneja el caso donde el colchón es None.
-        
-        Args:
-            nuevo_colchon: Nuevo valor del colchón en porcentaje (float o None)
-        """
-        try:
-            # Si el colchón es None, mostrar "—"
-            if nuevo_colchon is None:
-                self.lblColchonInterno.setText("—")
-                self.lblLimiteMax.setText("—")
-                print("[ForwardView] Colchón limpiado → Límite en '—'")
-                return
-            
-            # Obtener línea de crédito actual (remover formato)
-            linea_texto = self.lblLineaCredito.text().replace(",", "").replace("$", "").strip()
-            
-            if linea_texto == "—" or not linea_texto:
-                # No hay línea de crédito configurada → solo mostrar colchón
-                self.lblColchonInterno.setText(f"{nuevo_colchon:.2f}%")
-                self.lblLimiteMax.setText("—")
-                return
-            
-            linea_credito = float(linea_texto)
-            
-            # Calcular nuevo límite máximo
-            limite = linea_credito * (1 - (nuevo_colchon / 100))
-            
-            # Actualizar labels
-            self.lblColchonInterno.setText(f"{nuevo_colchon:.2f}%")
-            self.lblLimiteMax.setText(f"$ {limite:,.0f}")
-            
-            print(f"[ForwardView] Límite máximo actualizado: $ {limite:,.0f} (colchón {nuevo_colchon}%)")
-        
-        except Exception as e:
-            # Si hay error, actualizar colchón o mostrar "—"
-            self.lblColchonInterno.setText(f"{nuevo_colchon:.2f}%" if nuevo_colchon is not None else "—")
-            print(f"[ForwardView] No se pudo recalcular límite máximo: {e}")
+            print("[ForwardView] SettingsModel no proporcionado")
     
     def _setup_ui(self):
         """Configura la interfaz de usuario completa."""
