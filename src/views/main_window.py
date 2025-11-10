@@ -267,30 +267,22 @@ class MainWindow(QMainWindow):
         
         Args:
             nit: NIT del cliente seleccionado
+        
+        IMPORTANTE: Este método NO debe setear valores de línea/colchón/límite.
+        Esa responsabilidad es exclusiva del ForwardController.
+        MainWindow solo actúa como router de eventos.
         """
         print(f"[MainWindow] _on_client_changed: nit={nit}")
         
-        # Actualizar límites del cliente (datos dummy)
-        linea_dummy = 5000000.0  # 5 millones
-        colchon_pct_dummy = 0.10  # 10%
-        limite_max_dummy = 5500000.0  # 5.5 millones
+        # ❌ NO calcular ni setear límites aquí
+        # ❌ NO llamar a show_client_limits() con valores dummy
+        # ✅ El ForwardController ya manejó esto correctamente
         
-        self._forward_view.show_client_limits(
-            linea=linea_dummy,
-            colchon_pct=colchon_pct_dummy,
-            limite_max=limite_max_dummy
-        )
+        # Solo logging para debug (sin modificar UI)
+        print(f"   → Cliente {nit} seleccionado (valores ya configurados por ForwardController)")
         
-        # Actualizar tabla de operaciones vigentes (modelo dummy)
-        self._forward_view.set_operations_table(model=None)
-        
-        # Actualizar chart (datos dummy)
-        chart_data_dummy = {
-            'limite_max': limite_max_dummy,
-            'outstanding': 1000000.0,
-            'total_con_simulacion': 1500000.0
-        }
-        self._forward_view.update_chart(chart_data_dummy)
+        # Nota: Otros updates (operaciones, charts) se manejan desde ForwardController
+        # para mantener la separación de responsabilidades
     
     def _on_simulations_changed(self):
         """Handler para señal forward_simulations_changed."""

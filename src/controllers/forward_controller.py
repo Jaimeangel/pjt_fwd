@@ -60,12 +60,46 @@ class ForwardController:
         self._current_client_nit = None
         self._current_outstanding = 100000.0  # Mock: $100,000 COP
         
+        # Kill-switch para evitar reentrancia en select_client
+        self._updating_client = False
+        
         # Conectar señales de la vista a métodos del controller
         self._connect_view_signals()
     
     def _connect_view_signals(self):
         """Conecta las señales de la vista a los métodos del controlador."""
         if self._view:
+            # Desconectar primero (si estaban conectadas) para evitar dobles conexiones
+            try:
+                self._view.load_415_requested.disconnect(self.load_415)
+            except (TypeError, RuntimeError):
+                pass
+            try:
+                self._view.load_ibr_requested.disconnect(self.load_ibr)
+            except (TypeError, RuntimeError):
+                pass
+            try:
+                self._view.client_selected.disconnect(self.select_client)
+            except (TypeError, RuntimeError):
+                pass
+            try:
+                self._view.add_simulation_requested.disconnect(self.add_simulation)
+            except (TypeError, RuntimeError):
+                pass
+            try:
+                self._view.delete_simulations_requested.disconnect(self.delete_simulations)
+            except (TypeError, RuntimeError):
+                pass
+            try:
+                self._view.simulate_selected_requested.disconnect(self.simulate_selected_row)
+            except (TypeError, RuntimeError):
+                pass
+            try:
+                self._view.save_simulations_requested.disconnect(self.save_simulations)
+            except (TypeError, RuntimeError):
+                pass
+            
+            # Ahora conectar
             self._view.load_415_requested.connect(self.load_415)
             self._view.load_ibr_requested.connect(self.load_ibr)
             self._view.client_selected.connect(self.select_client)
@@ -73,7 +107,7 @@ class ForwardController:
             self._view.delete_simulations_requested.connect(self.delete_simulations)
             self._view.simulate_selected_requested.connect(self.simulate_selected_row)
             self._view.save_simulations_requested.connect(self.save_simulations)
-            print("[ForwardController] Señales de vista conectadas")
+            print("[ForwardController] Señales de vista conectadas (sin duplicados)")
         
         # Configurar el resolver de IBR en el modelo de simulaciones
         if self._simulations_table_model and self._data_model:
@@ -92,63 +126,39 @@ class ForwardController:
         el límite máximo cuando cambie el colchón en Configuraciones.
         """
         if self._settings_model and self._view:
+            # Desconectar primero (si estaba conectada) para evitar dobles conexiones
+            try:
+                self._settings_model.colchonChanged.disconnect(self._on_colchon_changed)
+            except (TypeError, RuntimeError):
+                pass
+            
+            # Ahora conectar
             self._settings_model.colchonChanged.connect(self._on_colchon_changed)
-            print("[ForwardController] Señal colchonChanged conectada para actualización reactiva")
+            print("[ForwardController] Señal colchonChanged conectada (sin duplicados)")
     
     def _on_colchon_changed(self, nuevo_colchon):
         """
         Recalcula el límite máximo cuando cambia el colchón de seguridad.
-        Solo actualiza si hay un cliente seleccionado con línea de crédito.
-        Maneja el caso donde el colchón es None.
+        Si hay un cliente seleccionado, recalcula todo llamando a select_client.
         
         Args:
             nuevo_colchon: Nuevo valor del colchón en porcentaje (float o None)
         """
-        if not self._view:
-            return
+        print(f"[ForwardController] _on_colchon_changed: {nuevo_colchon}")
         
-        try:
-            # Si el colchón es None, no se puede calcular límite
-            if nuevo_colchon is None:
-                self._view.set_credit_params(
-                    linea=self._view.lblLineaCredito.text(),  # Mantener línea actual
-                    colchon="—",
-                    limite="—"
-                )
-                print("[ForwardController] Colchón limpiado → Límite en '—'")
-                return
+        # Si hay un cliente seleccionado, recalcular sus límites
+        if self._current_client_nit:
+            # Obtener nombre del cliente actual
+            nombre = ""
+            if self._data_model:
+                nombre = self._data_model.get_nombre_by_nit(self._current_client_nit)
             
-            # Relee línea de crédito del label actual (si hay cliente seleccionado)
-            linea_txt = self._view.lblLineaCredito.text().replace(",", "").replace("$", "").strip()
-            
-            if linea_txt == "—" or not linea_txt:
-                # No hay línea para actualizar, solo actualizar el colchón
-                self._view.set_credit_params(
-                    linea="—",
-                    colchon=f"{float(nuevo_colchon):.2f}%",
-                    limite="—"
-                )
-                print(f"[ForwardController] Colchón actualizado a {nuevo_colchon}% (sin línea de crédito)")
-                return
-            
-            # Hay línea de crédito, recalcular límite
-            linea_val = float(linea_txt)
-            limite = linea_val * (1 - (float(nuevo_colchon) / 100.0))
-            
-            self._view.set_credit_params(
-                linea=f"$ {linea_val:,.0f}",
-                colchon=f"{float(nuevo_colchon):.2f}%",
-                limite=f"$ {limite:,.0f}"
-            )
-            print(f"[ForwardController] Límite máximo recalculado: $ {limite:,.0f} (colchón {nuevo_colchon}%)")
-        
-        except Exception as e:
-            # Falla silenciosa para no romper UI
-            print(f"[ForwardController] Error al recalcular límite: {e}")
-            if self._view and nuevo_colchon is not None:
-                self._view.lblColchonInterno.setText(f"{float(nuevo_colchon):.2f}%")
-            elif self._view:
-                self._view.lblColchonInterno.setText("—")
+            # Recalcular todo llamando a select_client
+            # (que ahora tiene kill-switch para evitar loops)
+            print(f"   → Recalculando límites para cliente actual: {self._current_client_nit}")
+            self.select_client(self._current_client_nit)
+        else:
+            print("   → Sin cliente seleccionado, no hay nada que recalcular")
     
     def load_415(self, file_path: str) -> None:
         """
@@ -580,142 +590,154 @@ class ForwardController:
     def select_client(self, nombre_o_nit: str) -> None:
         """
         Selecciona un cliente por nombre o NIT.
+        Este es el ÚNICO lugar donde se calculan y setean los valores de línea/colchón/límite.
         
         Args:
             nombre_o_nit: Nombre de la contraparte o NIT del cliente
         """
-        print(f"[ForwardController] select_client: {nombre_o_nit}")
-        
-        # Intentar obtener NIT desde el nombre
-        nit = None
-        if self._data_model:
-            # Primero intentar como nombre
-            nit = self._data_model.get_nit_by_name(nombre_o_nit)
-            # Si no funciona, asumir que es NIT directamente
-            if not nit:
-                nit = nombre_o_nit
-        else:
-            nit = nombre_o_nit
-        
-        if not nit:
-            print(f"   ⚠️  No se pudo determinar el NIT para: {nombre_o_nit}")
-            # Limpiar vista
-            if self._view:
-                self._view.show_exposure(outstanding=0.0, total_con_simulacion=None, disponibilidad=None)
-                if self._operations_table_model:
-                    self._operations_table_model.set_operations([])
+        # Kill-switch: evitar reentrancia si ya estamos procesando
+        if self._updating_client:
+            print(f"[ForwardController] select_client: BLOQUEADO (ya procesando)")
             return
         
-        print(f"   → NIT determinado: {nit}")
-        
-        # Guardar cliente actual
-        self._current_client_nit = nit
-        
-        # Actualizar cliente actual en el modelo de datos
-        if self._data_model:
-            nombre = self._data_model.get_nombre_by_nit(nit)
-            self._data_model.set_current_client(nit, nombre)
-        
-        # 🔹 Buscar cliente en líneas de crédito (SettingsModel) - SIN valores por defecto
-        if self._settings_model:
-            # Validar que hay líneas de crédito cargadas
-            if self._settings_model.lineas_credito_df.empty:
-                print(f"   ⚠️  No hay líneas de crédito cargadas en SettingsModel")
+        self._updating_client = True
+        try:
+            print(f"[ForwardController] select_client: {nombre_o_nit}")
+            
+            # Intentar obtener NIT desde el nombre
+            nit = None
+            if self._data_model:
+                # Primero intentar como nombre
+                nit = self._data_model.get_nit_by_name(nombre_o_nit)
+                # Si no funciona, asumir que es NIT directamente
+                if not nit:
+                    nit = nombre_o_nit
+            else:
+                nit = nombre_o_nit
+            
+            if not nit:
+                print(f"   ⚠️  No se pudo determinar el NIT para: {nombre_o_nit}")
+                # Limpiar vista
                 if self._view:
-                    self._view.set_credit_params(linea="—", colchon="—", limite="—")
-                    self._view.notify("Cargue primero 'Líneas de crédito' en Configuraciones.", "warning")
-                return  # No continuar con operaciones si no hay líneas de crédito
+                    self._view.show_exposure(outstanding=0.0, total_con_simulacion=None, disponibilidad=None)
+                    if self._operations_table_model:
+                        self._operations_table_model.set_operations([])
+                return
             
-            # Normalizar NIT (por si llega con guión)
-            nit_norm = str(nit).replace("-", "").strip()
-            cliente_info = self._settings_model.get_linea_credito_por_nit(nit_norm)
+            print(f"   → NIT determinado: {nit}")
             
-            # Obtener colchón actual desde SettingsModel (puede ser None)
-            colchon = self._settings_model.colchon_seguridad
+            # Guardar cliente actual
+            self._current_client_nit = nit
             
-            if cliente_info:
-                # Cliente encontrado en líneas de crédito
-                linea_credito = float(cliente_info['monto_cop'] or 0.0)
+            # Actualizar cliente actual en el modelo de datos
+            if self._data_model:
+                nombre = self._data_model.get_nombre_by_nit(nit)
+                self._data_model.set_current_client(nit, nombre)
+            
+            # 🔹 Buscar cliente en líneas de crédito (SettingsModel) - SIN valores por defecto
+            if self._settings_model:
+                # Validar que hay líneas de crédito cargadas
+                if self._settings_model.lineas_credito_df.empty:
+                    print(f"   ⚠️  No hay líneas de crédito cargadas en SettingsModel")
+                    if self._view:
+                        self._view.set_credit_params(linea="—", colchon="—", limite="—")
+                        self._view.notify("Cargue primero 'Líneas de crédito' en Configuraciones.", "warning")
+                    return  # No continuar con operaciones si no hay líneas de crédito
                 
-                # Validar que el colchón no sea None antes de calcular límite
-                if colchon is not None:
-                    limite_maximo = linea_credito * (1 - (float(colchon) / 100))
+                # Normalizar NIT (por si llega con guión)
+                nit_norm = str(nit).replace("-", "").strip()
+                cliente_info = self._settings_model.get_linea_credito_por_nit(nit_norm)
+                
+                # Obtener colchón actual desde SettingsModel (puede ser None)
+                colchon = self._settings_model.colchon_seguridad
+                
+                if cliente_info:
+                    # Cliente encontrado en líneas de crédito
+                    linea_credito = float(cliente_info['monto_cop'] or 0.0)
                     
-                    print(f"   → Límites del cliente (desde SettingsModel):")
-                    print(f"      Línea de crédito: $ {linea_credito:,.0f}")
-                    print(f"      Colchón interno: {colchon:.2f}%")
-                    print(f"      Límite máximo: $ {limite_maximo:,.0f}")
-                    
-                    # 🔹 Actualizar vista con límites (sin disparar cálculos de exposición)
-                    if self._view:
-                        self._view.set_credit_params(
-                            linea=f"$ {linea_credito:,.0f}",
-                            colchon=f"{colchon:.2f}%",
-                            limite=f"$ {limite_maximo:,.0f}"
-                        )
+                    # Validar que el colchón no sea None antes de calcular límite
+                    if colchon is not None:
+                        limite_maximo = linea_credito * (1 - (float(colchon) / 100))
+                        
+                        print(f"   → Límites del cliente (desde SettingsModel):")
+                        print(f"      Línea de crédito: $ {linea_credito:,.0f}")
+                        print(f"      Colchón interno: {colchon:.2f}%")
+                        print(f"      Límite máximo: $ {limite_maximo:,.0f}")
+                        
+                        # 🔹 Actualizar vista con límites (sin disparar cálculos de exposición)
+                        if self._view:
+                            self._view.set_credit_params(
+                                linea=f"$ {linea_credito:,.0f}",
+                                colchon=f"{colchon:.2f}%",
+                                limite=f"$ {limite_maximo:,.0f}"
+                            )
+                    else:
+                        # Colchón es None → no se puede calcular límite
+                        print(f"   → Cliente encontrado, pero colchón NO configurado:")
+                        print(f"      Línea de crédito: $ {linea_credito:,.0f}")
+                        print(f"      Colchón interno: (no configurado)")
+                        print(f"      Límite máximo: (no calculable)")
+                        
+                        if self._view:
+                            self._view.set_credit_params(
+                                linea=f"$ {linea_credito:,.0f}",
+                                colchon="—",
+                                limite="—"
+                            )
+                            self._view.notify("Configure el Colchón de seguridad en Configuraciones.", "info")
                 else:
-                    # Colchón es None → no se puede calcular límite
-                    print(f"   → Cliente encontrado, pero colchón NO configurado:")
-                    print(f"      Línea de crédito: $ {linea_credito:,.0f}")
-                    print(f"      Colchón interno: (no configurado)")
-                    print(f"      Límite máximo: (no calculable)")
-                    
+                    # Cliente NO encontrado en líneas de crédito → NO setear defaults numéricos
+                    print(f"   ⚠️  Cliente con NIT {nit_norm} no encontrado en líneas de crédito.")
                     if self._view:
+                        colchon_display = f"{colchon:.2f}%" if colchon is not None else "—"
                         self._view.set_credit_params(
-                            linea=f"$ {linea_credito:,.0f}",
-                            colchon="—",
+                            linea="—",
+                            colchon=colchon_display,  # Mostrar colchón vigente si existe
                             limite="—"
                         )
-                        self._view.notify("Configure el Colchón de seguridad en Configuraciones.", "info")
             else:
-                # Cliente NO encontrado en líneas de crédito → NO setear defaults numéricos
-                print(f"   ⚠️  Cliente con NIT {nit_norm} no encontrado en líneas de crédito.")
+                print(f"   ⚠️  SettingsModel no disponible, no se pueden cargar límites del cliente.")
                 if self._view:
-                    colchon_display = f"{colchon:.2f}%" if colchon is not None else "—"
-                    self._view.set_credit_params(
-                        linea="—",
-                        colchon=colchon_display,  # Mostrar colchón vigente si existe
-                        limite="—"
-                    )
-        else:
-            print(f"   ⚠️  SettingsModel no disponible, no se pueden cargar límites del cliente.")
-            if self._view:
-                self._view.set_credit_params(linea="—", colchon="—", limite="—")
-        
-        # Obtener exposición crediticia del cliente (outstanding)
-        outstanding = 0.0
-        if self._data_model:
-            outstanding = self._data_model.get_outstanding_por_nit(nit)
-            if outstanding > 0:
-                print(f"   → Outstanding del cliente: $ {outstanding:,.2f}")
-            else:
-                print(f"   → Sin operaciones vigentes para este cliente (Outstanding: $ 0.00)")
-        
-        # Actualizar outstanding en la vista
-        self._current_outstanding = outstanding
-        
-        if self._view:
-            # Solo mostrar Outstanding; NO igualar OutstandingSim aquí
-            # OutstandingSim se actualiza únicamente al pulsar "Simular"
-            self._view.show_exposure(
-                outstanding=outstanding,
-                total_con_simulacion=None,  # Dejar en "—" hasta simular
-                disponibilidad=None
-            )
-        
-        # Cargar operaciones vigentes del cliente en la tabla
-        if self._data_model and self._operations_table_model:
-            operaciones = self._data_model.get_operaciones_por_nit(nit)
-            print(f"   → Cargando {len(operaciones)} operaciones del cliente en la tabla")
-            self._operations_table_model.set_operations(operaciones)
+                    self._view.set_credit_params(linea="—", colchon="—", limite="—")
             
-            # Actualizar vista de la tabla
+            # Obtener exposición crediticia del cliente (outstanding)
+            outstanding = 0.0
+            if self._data_model:
+                outstanding = self._data_model.get_outstanding_por_nit(nit)
+                if outstanding > 0:
+                    print(f"   → Outstanding del cliente: $ {outstanding:,.2f}")
+                else:
+                    print(f"   → Sin operaciones vigentes para este cliente (Outstanding: $ 0.00)")
+            
+            # Actualizar outstanding en la vista
+            self._current_outstanding = outstanding
+            
             if self._view:
-                self._view.set_operations_table(self._operations_table_model)
+                # Solo mostrar Outstanding; NO igualar OutstandingSim aquí
+                # OutstandingSim se actualiza únicamente al pulsar "Simular"
+                self._view.show_exposure(
+                    outstanding=outstanding,
+                    total_con_simulacion=None,  # Dejar en "—" hasta simular
+                    disponibilidad=None
+                )
+            
+            # Cargar operaciones vigentes del cliente en la tabla
+            if self._data_model and self._operations_table_model:
+                operaciones = self._data_model.get_operaciones_por_nit(nit)
+                print(f"   → Cargando {len(operaciones)} operaciones del cliente en la tabla")
+                self._operations_table_model.set_operations(operaciones)
+                
+                # Actualizar vista de la tabla
+                if self._view:
+                    self._view.set_operations_table(self._operations_table_model)
+            
+            # Emitir señal global
+            if self._signals:
+                self._signals.forward_client_changed.emit(nit)
         
-        # Emitir señal global
-        if self._signals:
-            self._signals.forward_client_changed.emit(nit)
+        finally:
+            # Liberar kill-switch
+            self._updating_client = False
     
     def add_simulation(self) -> None:
         """

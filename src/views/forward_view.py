@@ -893,24 +893,6 @@ class ForwardView(QWidget):
                 f"border: 1px solid #d1d9e0; border-radius: 4px; padding: 8px; }}"
             )
     
-    def show_client_limits(self, linea: float = None, colchon_pct: float = None,
-                          limite_max: float = None) -> None:
-        """
-        Actualiza la información de límites del cliente.
-        
-        Args:
-            linea: Línea de crédito aprobada (None si no está disponible)
-            colchon_pct: Porcentaje de colchón (None si no está disponible)
-            limite_max: Límite máximo (None si no está disponible)
-        """
-        print(f"[ForwardView] show_client_limits: linea={linea}, "
-              f"colchon={colchon_pct}, limite_max={limite_max}")
-        
-        # Actualizar con formato o "—" si es None
-        self.lblLineaCredito.setText(f"$ {linea:,.0f}" if linea is not None else "—")
-        self.lblColchonInterno.setText(f"{colchon_pct:.2f}%" if colchon_pct is not None else "—")
-        self.lblLimiteMax.setText(f"$ {limite_max:,.0f}" if limite_max is not None else "—")
-    
     def set_credit_params(self, linea: str, colchon: str, limite: str) -> None:
         """
         Actualiza los parámetros de crédito del cliente (línea, colchón, límite).
