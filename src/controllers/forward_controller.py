@@ -607,22 +607,25 @@ class ForwardController:
                 
                 if cliente_info:
                     # Cliente encontrado en líneas de crédito
-                    linea_credito = float(cliente_info['monto_cop'] or 0.0)
+                    # COP (MM) es la línea aprobada en millones, convertir a COP reales
+                    linea_cop_mm = float(cliente_info.get('linea_cop_mm', 0.0))
+                    linea_credito_cop_real = linea_cop_mm * 1_000_000_000.0
                     
-                    # Obtener límite LLL 25% (COP) si existe
-                    lll_cop = cliente_info.get('lll_cop', None)
+                    # Obtener límite LLL 25% (COP) en millones y convertir a reales
+                    lll_cop_mm = cliente_info.get('lll_cop_mm', None)
+                    lll_cop_real = (float(lll_cop_mm) * 1_000_000_000.0) if lll_cop_mm else None
                     
                     print(f"   → Datos del cliente (desde SettingsModel):")
-                    print(f"      Línea de crédito: $ {linea_credito:,.0f}")
-                    if lll_cop:
-                        print(f"      LLL 25% (COP): $ {lll_cop:,.0f}")
+                    print(f"      Línea de crédito (COP real): $ {linea_credito_cop_real:,.0f}")
+                    if lll_cop_real:
+                        print(f"      LLL 25% (COP real): $ {lll_cop_real:,.0f}")
                     
                     # 🔹 Actualizar vista con línea de crédito
                     # (colchón y límite ahora son informativos, no se calculan globalmente)
                     if self._view:
-                        limite_display = f"$ {lll_cop:,.0f}" if lll_cop else "—"
+                        limite_display = f"$ {lll_cop_real:,.0f}" if lll_cop_real else "—"
                         self._view.set_credit_params(
-                            linea=f"$ {linea_credito:,.0f}",
+                            linea=f"$ {linea_credito_cop_real:,.0f}",
                             colchon="—",  # Ya no se usa colchón global
                             limite=limite_display
                         )

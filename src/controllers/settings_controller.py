@@ -17,16 +17,16 @@ class SettingsController:
     - Propagar cambios automáticamente mediante señales Qt
     """
     
-    def __init__(self, model=None, view=None):
+    def __init__(self, view=None, model=None):
         """
         Inicializa el controlador Settings.
         
         Args:
-            model: Instancia de SettingsModel
             view: Instancia de SettingsView
+            model: Instancia de SettingsModel
         """
-        self._model = model
         self._view = view
+        self._model = model
         
         print("[SettingsController] Inicializando...")
         
@@ -50,26 +50,26 @@ class SettingsController:
         
         # Bloquear señales temporalmente
         self._view.trm_cop_usd.blockSignals(True)
-        self._view.trm_eur_usd.blockSignals(True)
+        self._view.trm_cop_eur.blockSignals(True)
         self._view.inpLimEndeud.blockSignals(True)
         self._view.inpLimEntFin.blockSignals(True)
         
         # Cargar valores SOLO si no son None
-        trm_cop = self._model.trm_cop_usd()
-        if trm_cop is not None:
-            self._view.trm_cop_usd.setText(f"{trm_cop:.6f}")
-            print(f"   TRM COP/USD: {trm_cop:,.6f}")
+        trm_cop_usd = self._model.trm_cop_usd()
+        if trm_cop_usd is not None:
+            self._view.trm_cop_usd.setText(f"{trm_cop_usd:.6f}")
+            print(f"   TRM COP/USD: {trm_cop_usd:,.6f}")
         else:
             self._view.trm_cop_usd.clear()
             print("   TRM COP/USD: (no configurado)")
         
-        trm_eur = self._model.trm_eur_usd()
-        if trm_eur is not None:
-            self._view.trm_eur_usd.setText(f"{trm_eur:.6f}")
-            print(f"   TRM EUR/USD: {trm_eur:,.6f}")
+        trm_cop_eur = self._model.trm_cop_eur()
+        if trm_cop_eur is not None:
+            self._view.trm_cop_eur.setText(f"{trm_cop_eur:.6f}")
+            print(f"   TRM COP/EUR: {trm_cop_eur:,.6f}")
         else:
-            self._view.trm_eur_usd.clear()
-            print("   TRM EUR/USD: (no configurado)")
+            self._view.trm_cop_eur.clear()
+            print("   TRM COP/EUR: (no configurado)")
         
         # Parámetros normativos (pueden o no tener defaults)
         lim_end = self._model.lim_endeud()
@@ -86,7 +86,7 @@ class SettingsController:
         
         # Desbloquear señales
         self._view.trm_cop_usd.blockSignals(False)
-        self._view.trm_eur_usd.blockSignals(False)
+        self._view.trm_cop_eur.blockSignals(False)
         self._view.inpLimEndeud.blockSignals(False)
         self._view.inpLimEntFin.blockSignals(False)
     
@@ -103,29 +103,27 @@ class SettingsController:
         
         # Conectar cambios de Parámetros Generales (TRMs)
         self._view.trm_cop_usd.textChanged.connect(self._model.set_trm_cop_usd)
-        self._view.trm_eur_usd.textChanged.connect(self._model.set_trm_eur_usd)
+        self._view.trm_cop_eur.textChanged.connect(self._model.set_trm_cop_eur)
         
         # Conectar cambios de Parámetros Normativos
         self._view.inpLimEndeud.valueChanged.connect(self._model.set_lim_endeud)
         self._view.inpLimEntFin.valueChanged.connect(self._model.set_lim_entfin)
         
-        # Conectar señales del modelo para recalcular tabla cuando cambie TRM
-        self._model.trm_cop_usdChanged.connect(self._update_lineas_credito_with_trm)
-        self._model.trm_eur_usdChanged.connect(self._update_lineas_credito_with_trm)
+        # Conectar señales del modelo para recalcular tabla cuando cambie TRM COP/EUR
+        self._model.trm_cop_eurChanged.connect(self._update_lineas_credito_with_trm)
         
         print("   ✓ trm_cop_usd.textChanged → model.set_trm_cop_usd()")
-        print("   ✓ trm_eur_usd.textChanged → model.set_trm_eur_usd()")
+        print("   ✓ trm_cop_eur.textChanged → model.set_trm_cop_eur()")
         print("   ✓ LimEndeud.valueChanged → model.set_lim_endeud()")
         print("   ✓ LimEntFin.valueChanged → model.set_lim_entfin()")
-        print("   ✓ trm_cop_usdChanged → _update_lineas_credito_with_trm()")
-        print("   ✓ trm_eur_usdChanged → _update_lineas_credito_with_trm()")
+        print("   ✓ trm_cop_eurChanged → _update_lineas_credito_with_trm()")
     
-    def _update_lineas_credito_with_trm(self, trm_value) -> None:
+    def _update_lineas_credito_with_trm(self, trm_cop_eur) -> None:
         """
-        Recalcula las columnas dependientes de TRM en la tabla de líneas de crédito.
+        Recalcula las columnas dependientes de TRM COP/EUR en la tabla de líneas de crédito.
         
         Args:
-            trm_value: Nuevo valor de TRM (float o None)
+            trm_cop_eur: Nuevo valor de TRM COP/EUR (float o None)
         """
         if not self._view or not self._model:
             return
@@ -135,30 +133,34 @@ class SettingsController:
             print("[SettingsController] No hay líneas de crédito cargadas, no se recalcula")
             return
         
-        print(f"[SettingsController] Recalculando columnas con TRM actualizado...")
+        print(f"[SettingsController] Recalculando columnas con TRM COP/EUR actualizado...")
         
         df = self._view.df_lineas_credito.copy()
         
-        trm_cop_usd = self._model.trm_cop_usd()
-        trm_eur_usd = self._model.trm_eur_usd()
-        
-        # Recalcular LLL 25% (EUR) si TRM COP/USD está disponible
-        if "LLL 25% (COP)" in df.columns:
-            if trm_cop_usd and trm_cop_usd > 0:
-                df["LLL 25% (EUR)"] = df["LLL 25% (COP)"] / trm_cop_usd
-                print(f"   ✓ LLL 25% (EUR) recalculado con TRM COP/USD = {trm_cop_usd:,.6f}")
-            else:
+        if not trm_cop_eur or trm_cop_eur <= 0:
+            # Si no hay TRM, limpiar columnas calculadas
+            if "LLL 25% (EUR)" in df.columns:
                 df["LLL 25% (EUR)"] = None
-                print(f"   ⚠️  LLL 25% (EUR) limpiado (TRM COP/USD no disponible)")
-        
-        # Recalcular COP (MM) si TRM COP/USD está disponible
-        if "EUR (MM)" in df.columns:
-            if trm_cop_usd and trm_cop_usd > 0:
-                df["COP (MM)"] = df["EUR (MM)"] * trm_cop_usd
-                print(f"   ✓ COP (MM) recalculado con TRM COP/USD = {trm_cop_usd:,.6f}")
-            else:
-                df["COP (MM)"] = None
-                print(f"   ⚠️  COP (MM) limpiado (TRM COP/USD no disponible)")
+            print(f"   ⚠️  TRM COP/EUR no disponible, columnas calculadas limpiadas")
+        else:
+            # Helper local para limpiar series numéricas
+            import pandas as pd
+            def _to_mm(series: pd.Series) -> pd.Series:
+                return (series.astype(str).str.strip()
+                        .str.replace(r"[^\d,.\-]", "", regex=True)
+                        .str.replace(",", "", regex=False)
+                        .str.replace(" ", "", regex=False)
+                        .pipe(pd.to_numeric, errors="coerce").fillna(0))
+            
+            # Recalcular LLL 25% (EUR) = LLL 25% (COP) / TRM COP/EUR
+            if "LLL 25% (COP)" in df.columns:
+                df["LLL 25% (EUR)"] = _to_mm(df["LLL 25% (COP)"]) / float(trm_cop_eur)
+                print(f"   ✓ LLL 25% (EUR) recalculado con TRM COP/EUR = {trm_cop_eur:,.6f}")
+            
+            # Recalcular COP (MM) = EUR (MM) × TRM COP/EUR
+            if "EUR (MM)" in df.columns:
+                df["COP (MM)"] = _to_mm(df["EUR (MM)"]) * float(trm_cop_eur)
+                print(f"   ✓ COP (MM) recalculado con TRM COP/EUR = {trm_cop_eur:,.6f}")
         
         # Actualizar el DataFrame en la vista y en el modelo
         self._view.df_lineas_credito = df
@@ -167,7 +169,7 @@ class SettingsController:
         # Actualizar la tabla en la UI
         self._view.mostrar_lineas_credito(df)
         
-        print(f"   ✅ Tabla actualizada con nuevos valores de TRM")
+        print(f"   ✅ Tabla actualizada con nuevos valores de TRM COP/EUR")
     
     def handle_setting_change(self, key: str, value: Any) -> None:
         """

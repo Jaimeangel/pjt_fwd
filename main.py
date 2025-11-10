@@ -120,8 +120,8 @@ class SimuladorForwardApp:
         
         print("[App] Creando SettingsController...")
         self.settings_controller = SettingsController(
-            model=self.settings_model,
-            view=self.settings_view
+            view=self.settings_view,
+            model=self.settings_model
         )
         
         print("\n[App] ✅ Aplicación inicializada correctamente")

@@ -105,14 +105,14 @@ class SettingsView(QWidget):
         self.trm_cop_usd.setMinimumWidth(200)
         layout.addRow("TRM Vigente del día (COP/USD):", self.trm_cop_usd)
         
-        # TRM Vigente del día EUR/USD
-        self.trm_eur_usd = QLineEdit()
-        self.trm_eur_usd.setPlaceholderText("Ingrese TRM EUR/USD")
+        # TRM Vigente del día COP/EUR
+        self.trm_cop_eur = QLineEdit()
+        self.trm_cop_eur.setPlaceholderText("Ingrese TRM COP/EUR")
         validator_eur = QDoubleValidator(0.0, 999999.0, 6)
         validator_eur.setNotation(QDoubleValidator.StandardNotation)
-        self.trm_eur_usd.setValidator(validator_eur)
-        self.trm_eur_usd.setMinimumWidth(200)
-        layout.addRow("TRM Vigente del día (EUR/USD):", self.trm_eur_usd)
+        self.trm_cop_eur.setValidator(validator_eur)
+        self.trm_cop_eur.setMinimumWidth(200)
+        layout.addRow("TRM Vigente del día (COP/EUR):", self.trm_cop_eur)
         
         return group
     
@@ -274,9 +274,6 @@ class SettingsView(QWidget):
                 "nit": "NIT",
                 "contraparte": "Contraparte",
                 "grupo conectado de contrapartes": "Grupo Conectado de Contrapartes",
-                "monto (cop)": "Monto (COP)",
-                "monto(cop)": "Monto (COP)",  # Sin espacio antes del paréntesis
-                "monto": "Monto (COP)",        # Solo "Monto"
                 "fecha pt última actualización": "Fecha PT última actualización",
                 "fecha pt ultima actualizacion": "Fecha PT última actualización",
                 "patrimonio técnico": "Patrimonio técnico",
@@ -291,8 +288,8 @@ class SettingsView(QWidget):
             df.rename(columns=lambda c: alias.get(c.lower(), c), inplace=True)
             print(f"   ✓ Columnas después de mapeo: {list(df.columns)}")
             
-            # Columnas esperadas (mínimas)
-            columnas_esperadas = ["NIT", "Contraparte", "Grupo Conectado de Contrapartes", "Monto (COP)"]
+            # Columnas esperadas (mínimas) - ya NO incluye "Monto (COP)"
+            columnas_esperadas = ["NIT", "Contraparte", "Grupo Conectado de Contrapartes", "COP (MM)"]
             
             # Validar columnas requeridas
             faltantes = [col for col in columnas_esperadas if col not in df.columns]
@@ -315,88 +312,56 @@ class SettingsView(QWidget):
             df["NIT"] = df["NIT"].str.replace("-", "", regex=False).str.strip()
             print(f"   ✓ NITs normalizados (guiones eliminados)")
             
-            # 🔹 Limpiar y convertir Monto (COP): vienen como strings con comas ("12,557")
-            monto_col = "Monto (COP)"
-            
-            # 1️⃣ Normalizar: eliminar espacios, letras y símbolos no numéricos (excepto dígitos, coma, punto y signo)
-            df[monto_col] = (
-                df[monto_col]
-                    .astype(str)
-                    .str.strip()
-                    .str.replace(r"[^\d,.\-]", "", regex=True)
-            )
-            
-            # 2️⃣ Quitar separadores de miles (comas, espacios)
-            df[monto_col] = (
-                df[monto_col]
-                    .str.replace(",", "", regex=False)
-                    .str.replace(" ", "", regex=False)
-            )
-            
-            # 3️⃣ Convertir a número, reemplazando NaN con 0
-            df[monto_col] = pd.to_numeric(df[monto_col], errors="coerce").fillna(0)
-            
-            # 4️⃣ Escalar: los valores vienen en miles de millones, convertir a COP reales
-            df[monto_col] = df[monto_col] * 1_000_000_000
-            
-            print(f"   ✓ Montos limpiados y convertidos (miles de millones → COP reales)")
-            
-            # 🔹 Función auxiliar para convertir valores en miles de millones a valores reales
-            def _to_real(value_str):
+            # 🔹 Función auxiliar para limpiar y convertir valores numéricos en MM (millones)
+            def _to_mm(series: pd.Series) -> pd.Series:
                 """
-                Convierte un string en miles de millones a valor real.
-                Ej: "1.5" → 1,500,000,000
-                    "12,557" → 12,557,000,000,000
+                Limpia y convierte una serie a valores numéricos en MM (millones).
+                Mantiene los valores como están (en millones), NO multiplica.
                 """
-                if pd.isna(value_str) or value_str == "":
-                    return 0.0
-                
-                try:
-                    # Limpiar: quitar espacios, comas,puntos (excepto el punto decimal)
-                    value_clean = str(value_str).strip().replace(",", "").replace(" ", "")
-                    # Convertir a float
-                    value_float = float(value_clean)
-                    # Multiplicar por mil millones
-                    return value_float * 1_000_000_000
-                except Exception as e:
-                    print(f"      Advertencia: No se pudo convertir '{value_str}': {e}")
-                    return 0.0
+                return (series.astype(str).str.strip()
+                        .str.replace(r"[^\d,.\-]", "", regex=True)
+                        .str.replace(",", "", regex=False)
+                        .str.replace(" ", "", regex=False)
+                        .pipe(pd.to_numeric, errors="coerce").fillna(0))
             
-            # 🔹 Procesar columnas adicionales si existen
+            # 🔹 Procesar columnas numéricas (mantener en millones)
             if "Patrimonio técnico" in df.columns:
-                df["Patrimonio técnico"] = df["Patrimonio técnico"].apply(_to_real)
-                print(f"   ✓ Patrimonio técnico convertido (miles de millones → reales)")
+                df["Patrimonio técnico"] = _to_mm(df["Patrimonio técnico"])
+                print(f"   ✓ Patrimonio técnico limpiado (MM)")
             
             if "LLL 25% (COP)" in df.columns:
-                df["LLL 25% (COP)"] = df["LLL 25% (COP)"].apply(_to_real)
-                print(f"   ✓ LLL 25% (COP) convertido (miles de millones → reales)")
+                df["LLL 25% (COP)"] = _to_mm(df["LLL 25% (COP)"])
+                print(f"   ✓ LLL 25% (COP) limpiado (MM)")
             
             if "EUR (MM)" in df.columns:
-                df["EUR (MM)"] = df["EUR (MM)"].apply(_to_real)
-                print(f"   ✓ EUR (MM) convertido (miles de millones → reales)")
+                df["EUR (MM)"] = _to_mm(df["EUR (MM)"])
+                print(f"   ✓ EUR (MM) limpiado (MM)")
             
-            # 🔹 Calcular columnas dinámicas basadas en TRM
+            if "COP (MM)" in df.columns:
+                df["COP (MM)"] = _to_mm(df["COP (MM)"])
+                print(f"   ✓ COP (MM) limpiado (MM)")
+            
+            # 🔹 Calcular columnas dinámicas basadas en TRM COP/EUR
             if self._settings_model:
-                trm_cop_usd = self._settings_model.trm_cop_usd()
-                trm_eur_usd = self._settings_model.trm_eur_usd()
+                trm_cop_eur = self._settings_model.trm_cop_eur()
                 
-                # Calcular LLL 25% (EUR) solo si tenemos TRM COP/USD
+                # Calcular LLL 25% (EUR) solo si tenemos TRM COP/EUR
                 if "LLL 25% (COP)" in df.columns:
-                    if trm_cop_usd and trm_cop_usd > 0:
-                        df["LLL 25% (EUR)"] = df["LLL 25% (COP)"] / trm_cop_usd
-                        print(f"   ✓ LLL 25% (EUR) calculado usando TRM COP/USD = {trm_cop_usd:,.6f}")
+                    if trm_cop_eur and trm_cop_eur > 0:
+                        df["LLL 25% (EUR)"] = df["LLL 25% (COP)"] / float(trm_cop_eur)
+                        print(f"   ✓ LLL 25% (EUR) calculado usando TRM COP/EUR = {trm_cop_eur:,.6f}")
                     else:
                         df["LLL 25% (EUR)"] = None
-                        print(f"   ⚠️  LLL 25% (EUR) no calculado (falta TRM COP/USD)")
+                        print(f"   ⚠️  LLL 25% (EUR) no calculado (falta TRM COP/EUR)")
                 
-                # Calcular COP (MM) solo si tenemos TRM COP/USD y EUR (MM)
+                # Calcular COP (MM) solo si tenemos TRM COP/EUR y EUR (MM)
                 if "EUR (MM)" in df.columns:
-                    if trm_cop_usd and trm_cop_usd > 0:
-                        df["COP (MM)"] = df["EUR (MM)"] * trm_cop_usd
-                        print(f"   ✓ COP (MM) calculado usando TRM COP/USD = {trm_cop_usd:,.6f}")
+                    if trm_cop_eur and trm_cop_eur > 0:
+                        df["COP (MM)"] = df["EUR (MM)"] * float(trm_cop_eur)
+                        print(f"   ✓ COP (MM) calculado usando TRM COP/EUR = {trm_cop_eur:,.6f}")
                     else:
-                        df["COP (MM)"] = None
-                        print(f"   ⚠️  COP (MM) no calculado (falta TRM COP/USD)")
+                        # Si no hay TRM, mantener COP (MM) como está en el archivo
+                        print(f"   ⚠️  COP (MM) se mantiene como está en archivo (falta TRM COP/EUR)")
             else:
                 print(f"   ⚠️  Modelo no disponible, columnas dinámicas no calculadas")
             
@@ -451,12 +416,13 @@ class SettingsView(QWidget):
         
         print(f"[SettingsView] Mostrando {len(df)} líneas de crédito en la tabla...")
         
-        # Determinar columnas a mostrar (dinámicas según lo que esté en el DataFrame)
-        columnas_base = ["NIT", "Contraparte", "Grupo Conectado de Contrapartes", "Monto (COP)"]
-        columnas_opcionales = ["Fecha PT última actualización", "Patrimonio técnico", 
-                              "LLL 25% (COP)", "LLL 25% (EUR)", "EUR (MM)", "COP (MM)"]
+        # Determinar columnas a mostrar (orden sugerido según requerimientos)
+        columnas_orden = ["NIT", "Contraparte", "Grupo Conectado de Contrapartes", 
+                         "Fecha PT última actualización", "Patrimonio técnico",
+                         "LLL 25% (COP)", "LLL 25% (EUR)", "EUR (MM)", "COP (MM)"]
         
-        columnas_a_mostrar = columnas_base + [col for col in columnas_opcionales if col in df.columns]
+        # Filtrar solo las que existen en el DataFrame
+        columnas_a_mostrar = [col for col in columnas_orden if col in df.columns]
         
         # Limpiar tabla
         self.tblLineasCredito.setRowCount(0)
@@ -488,10 +454,16 @@ class SettingsView(QWidget):
                     texto = str(valor)
                 elif col in ["Contraparte", "Grupo Conectado de Contrapartes", "Fecha PT última actualización"]:
                     texto = str(valor) if pd.notna(valor) else ""
-                elif col in ["Monto (COP)", "Patrimonio técnico", "LLL 25% (COP)", "LLL 25% (EUR)", "EUR (MM)", "COP (MM)"]:
-                    # Formatear como moneda/número
+                elif col in ["Patrimonio técnico", "LLL 25% (COP)", "EUR (MM)", "COP (MM)"]:
+                    # Formatear valores en millones (MM)
                     if pd.notna(valor) and valor is not None:
-                        texto = f"{float(valor):,.2f}"
+                        texto = f"{float(valor):,.2f} MM"
+                    else:
+                        texto = "—"
+                elif col in ["LLL 25% (EUR)"]:
+                    # Formatear valores en EUR (también en MM)
+                    if pd.notna(valor) and valor is not None:
+                        texto = f"{float(valor):,.2f} MM €"
                     else:
                         texto = "—"
                 else:

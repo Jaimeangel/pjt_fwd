@@ -24,7 +24,7 @@ class SettingsModel(QObject):
     
     # Señales para cambios en tiempo real (pueden emitir float o None)
     trm_cop_usdChanged = Signal(object)  # float | None
-    trm_eur_usdChanged = Signal(object)  # float | None
+    trm_cop_eurChanged = Signal(object)  # float | None
     lineasCreditoChanged = Signal()      # Aviso de cambios en DataFrame
     
     def __init__(self):
@@ -36,7 +36,7 @@ class SettingsModel(QObject):
         
         # Parámetros Generales (TRMs)
         self._trm_cop_usd: Optional[float] = None  # TRM COP/USD
-        self._trm_eur_usd: Optional[float] = None  # TRM EUR/USD
+        self._trm_cop_eur: Optional[float] = None  # TRM COP/EUR
         
         # Parámetros Normativos
         self._lim_endeud: Optional[float] = None
@@ -79,35 +79,35 @@ class SettingsModel(QObject):
         """
         return self._trm_cop_usd
     
-    def set_trm_eur_usd(self, v) -> None:
+    def set_trm_cop_eur(self, v) -> None:
         """
-        Establece la TRM EUR/USD vigente y emite señal si cambió.
+        Establece la TRM COP/EUR vigente y emite señal si cambió.
         Acepta None, float, o string.
         
         Args:
-            v: Nuevo valor de TRM EUR/USD (float, str o None)
+            v: Nuevo valor de TRM COP/EUR (float, str o None)
         """
         try:
             val = float(v) if v not in (None, "") else None
         except (TypeError, ValueError):
             val = None
         
-        if val != self._trm_eur_usd:
-            self._trm_eur_usd = val
-            self.trm_eur_usdChanged.emit(val)
+        if val != self._trm_cop_eur:
+            self._trm_cop_eur = val
+            self.trm_cop_eurChanged.emit(val)
             if val is not None:
-                print(f"[SettingsModel] TRM EUR/USD actualizada: {val:,.6f}")
+                print(f"[SettingsModel] TRM COP/EUR actualizada: {val:,.6f}")
             else:
-                print("[SettingsModel] TRM EUR/USD limpiada (None)")
+                print("[SettingsModel] TRM COP/EUR limpiada (None)")
     
-    def trm_eur_usd(self) -> Optional[float]:
+    def trm_cop_eur(self) -> Optional[float]:
         """
-        Obtiene la TRM EUR/USD vigente.
+        Obtiene la TRM COP/EUR vigente.
         
         Returns:
-            Valor de TRM EUR/USD o None si no está configurado
+            Valor de TRM COP/EUR o None si no está configurado
         """
-        return self._trm_eur_usd
+        return self._trm_cop_eur
     
     # === Parámetros Normativos ===
     
@@ -135,7 +135,7 @@ class SettingsModel(QObject):
         Normaliza el NIT (elimina guiones) antes de almacenar.
         
         Args:
-            df: DataFrame con columnas NIT, Contraparte, Grupo Conectado de Contrapartes, Monto (COP)
+            df: DataFrame con columnas NIT, Contraparte, Grupo, Patrimonio técnico, LLL 25% (COP), EUR (MM), COP (MM)
         """
         # Normalizar NIT sin guiones
         df = df.copy()
@@ -167,21 +167,22 @@ class SettingsModel(QObject):
         result = {
             "nit": str(cliente_info["NIT"].iloc[0]),
             "contraparte": str(cliente_info["Contraparte"].iloc[0]),
-            "grupo": str(cliente_info["Grupo Conectado de Contrapartes"].iloc[0]),
-            "monto_cop": float(cliente_info["Monto (COP)"].iloc[0])
+            "grupo": str(cliente_info["Grupo Conectado de Contrapartes"].iloc[0])
         }
+        
+        # COP (MM) es la línea aprobada en COP (millones)
+        if "COP (MM)" in cliente_info.columns:
+            cop_mm = cliente_info["COP (MM)"].iloc[0]
+            result["linea_cop_mm"] = float(cop_mm) if pd.notna(cop_mm) else 0.0
         
         # Incluir columnas adicionales si existen
         if "Patrimonio técnico" in cliente_info.columns:
-            result["patrimonio_tecnico"] = float(cliente_info["Patrimonio técnico"].iloc[0])
+            result["patrimonio_tecnico_mm"] = float(cliente_info["Patrimonio técnico"].iloc[0])
         if "LLL 25% (COP)" in cliente_info.columns:
-            result["lll_cop"] = float(cliente_info["LLL 25% (COP)"].iloc[0])
+            result["lll_cop_mm"] = float(cliente_info["LLL 25% (COP)"].iloc[0])
         if "LLL 25% (EUR)" in cliente_info.columns:
             lll_eur = cliente_info["LLL 25% (EUR)"].iloc[0]
-            result["lll_eur"] = float(lll_eur) if pd.notna(lll_eur) else None
-        if "COP (MM)" in cliente_info.columns:
-            cop_mm = cliente_info["COP (MM)"].iloc[0]
-            result["cop_mm"] = float(cop_mm) if pd.notna(cop_mm) else None
+            result["lll_eur_mm"] = float(lll_eur) if pd.notna(lll_eur) else None
         if "EUR (MM)" in cliente_info.columns:
             result["eur_mm"] = float(cliente_info["EUR (MM)"].iloc[0])
         
@@ -198,7 +199,7 @@ class SettingsModel(QObject):
         """
         return {
             "trm_cop_usd": self._trm_cop_usd,
-            "trm_eur_usd": self._trm_eur_usd,
+            "trm_cop_eur": self._trm_cop_eur,
             "lim_endeud": self._lim_endeud,
             "lim_entfin": self._lim_entfin
         }
