@@ -49,38 +49,29 @@ class SettingsController:
         print("[SettingsController] Cargando valores iniciales del modelo...")
         
         # Bloquear señales temporalmente
-        self._view.inpPatrimonio.blockSignals(True)
-        self._view.inpTRM.blockSignals(True)
+        self._view.trm_cop_usd.blockSignals(True)
+        self._view.trm_eur_usd.blockSignals(True)
         self._view.inpLimEndeud.blockSignals(True)
         self._view.inpLimEntFin.blockSignals(True)
-        self._view.inpColchon.blockSignals(True)
         
         # Cargar valores SOLO si no son None
-        pat = self._model.patrimonio()
-        if pat is not None:
-            self._view.inpPatrimonio.setValue(pat)
-            print(f"   Patrimonio: $ {pat:,.2f}")
+        trm_cop = self._model.trm_cop_usd()
+        if trm_cop is not None:
+            self._view.trm_cop_usd.setText(f"{trm_cop:.6f}")
+            print(f"   TRM COP/USD: {trm_cop:,.6f}")
         else:
-            self._view.inpPatrimonio.clear()
-            print("   Patrimonio: (no configurado)")
+            self._view.trm_cop_usd.clear()
+            print("   TRM COP/USD: (no configurado)")
         
-        trm = self._model.trm()
-        if trm is not None:
-            self._view.inpTRM.setValue(trm)
-            print(f"   TRM: $ {trm:,.2f}")
+        trm_eur = self._model.trm_eur_usd()
+        if trm_eur is not None:
+            self._view.trm_eur_usd.setText(f"{trm_eur:.6f}")
+            print(f"   TRM EUR/USD: {trm_eur:,.6f}")
         else:
-            self._view.inpTRM.clear()
-            print("   TRM: (no configurado)")
+            self._view.trm_eur_usd.clear()
+            print("   TRM EUR/USD: (no configurado)")
         
-        colchon = self._model.colchon()
-        if colchon is not None:
-            self._view.inpColchon.setValue(colchon)
-            print(f"   Colchón: {colchon}%")
-        else:
-            self._view.inpColchon.clear()
-            print("   Colchón: (no configurado)")
-        
-        # Otros parámetros normativos (pueden o no tener defaults)
+        # Parámetros normativos (pueden o no tener defaults)
         lim_end = self._model.lim_endeud()
         if lim_end is not None:
             self._view.inpLimEndeud.setValue(lim_end)
@@ -94,11 +85,10 @@ class SettingsController:
             self._view.inpLimEntFin.clear()
         
         # Desbloquear señales
-        self._view.inpPatrimonio.blockSignals(False)
-        self._view.inpTRM.blockSignals(False)
+        self._view.trm_cop_usd.blockSignals(False)
+        self._view.trm_eur_usd.blockSignals(False)
         self._view.inpLimEndeud.blockSignals(False)
         self._view.inpLimEntFin.blockSignals(False)
-        self._view.inpColchon.blockSignals(False)
     
     def _connect_signals(self) -> None:
         """
@@ -111,20 +101,73 @@ class SettingsController:
         
         print("[SettingsController] Conectando señales...")
         
-        # Conectar cambios de Parámetros Generales
-        self._view.inpPatrimonio.valueChanged.connect(self._model.set_patrimonio)
-        self._view.inpTRM.valueChanged.connect(self._model.set_trm)
+        # Conectar cambios de Parámetros Generales (TRMs)
+        self._view.trm_cop_usd.textChanged.connect(self._model.set_trm_cop_usd)
+        self._view.trm_eur_usd.textChanged.connect(self._model.set_trm_eur_usd)
         
         # Conectar cambios de Parámetros Normativos
         self._view.inpLimEndeud.valueChanged.connect(self._model.set_lim_endeud)
         self._view.inpLimEntFin.valueChanged.connect(self._model.set_lim_entfin)
-        self._view.inpColchon.valueChanged.connect(self._model.set_colchon)
         
-        print("   ✓ Patrimonio.valueChanged → model.set_patrimonio()")
-        print("   ✓ TRM.valueChanged → model.set_trm()")
+        # Conectar señales del modelo para recalcular tabla cuando cambie TRM
+        self._model.trm_cop_usdChanged.connect(self._update_lineas_credito_with_trm)
+        self._model.trm_eur_usdChanged.connect(self._update_lineas_credito_with_trm)
+        
+        print("   ✓ trm_cop_usd.textChanged → model.set_trm_cop_usd()")
+        print("   ✓ trm_eur_usd.textChanged → model.set_trm_eur_usd()")
         print("   ✓ LimEndeud.valueChanged → model.set_lim_endeud()")
         print("   ✓ LimEntFin.valueChanged → model.set_lim_entfin()")
-        print("   ✓ Colchon.valueChanged → model.set_colchon()")
+        print("   ✓ trm_cop_usdChanged → _update_lineas_credito_with_trm()")
+        print("   ✓ trm_eur_usdChanged → _update_lineas_credito_with_trm()")
+    
+    def _update_lineas_credito_with_trm(self, trm_value) -> None:
+        """
+        Recalcula las columnas dependientes de TRM en la tabla de líneas de crédito.
+        
+        Args:
+            trm_value: Nuevo valor de TRM (float o None)
+        """
+        if not self._view or not self._model:
+            return
+        
+        # Solo recalcular si hay datos cargados
+        if self._view.df_lineas_credito is None or self._view.df_lineas_credito.empty:
+            print("[SettingsController] No hay líneas de crédito cargadas, no se recalcula")
+            return
+        
+        print(f"[SettingsController] Recalculando columnas con TRM actualizado...")
+        
+        df = self._view.df_lineas_credito.copy()
+        
+        trm_cop_usd = self._model.trm_cop_usd()
+        trm_eur_usd = self._model.trm_eur_usd()
+        
+        # Recalcular LLL 25% (EUR) si TRM COP/USD está disponible
+        if "LLL 25% (COP)" in df.columns:
+            if trm_cop_usd and trm_cop_usd > 0:
+                df["LLL 25% (EUR)"] = df["LLL 25% (COP)"] / trm_cop_usd
+                print(f"   ✓ LLL 25% (EUR) recalculado con TRM COP/USD = {trm_cop_usd:,.6f}")
+            else:
+                df["LLL 25% (EUR)"] = None
+                print(f"   ⚠️  LLL 25% (EUR) limpiado (TRM COP/USD no disponible)")
+        
+        # Recalcular COP (MM) si TRM COP/USD está disponible
+        if "EUR (MM)" in df.columns:
+            if trm_cop_usd and trm_cop_usd > 0:
+                df["COP (MM)"] = df["EUR (MM)"] * trm_cop_usd
+                print(f"   ✓ COP (MM) recalculado con TRM COP/USD = {trm_cop_usd:,.6f}")
+            else:
+                df["COP (MM)"] = None
+                print(f"   ⚠️  COP (MM) limpiado (TRM COP/USD no disponible)")
+        
+        # Actualizar el DataFrame en la vista y en el modelo
+        self._view.df_lineas_credito = df
+        self._model.set_lineas_credito(df)
+        
+        # Actualizar la tabla en la UI
+        self._view.mostrar_lineas_credito(df)
+        
+        print(f"   ✅ Tabla actualizada con nuevos valores de TRM")
     
     def handle_setting_change(self, key: str, value: Any) -> None:
         """

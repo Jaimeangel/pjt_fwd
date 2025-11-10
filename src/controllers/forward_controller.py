@@ -116,49 +116,6 @@ class ForwardController:
             )
             print("[ForwardController] IBR resolver configurado en modelo de simulaciones")
         
-        # Conectar señal reactiva de colchón desde SettingsModel
-        if self._settings_model:
-            self._connect_colchon_reactivo()
-    
-    def _connect_colchon_reactivo(self):
-        """
-        Conecta la señal colchonChanged de SettingsModel para recalcular automáticamente
-        el límite máximo cuando cambie el colchón en Configuraciones.
-        """
-        if self._settings_model and self._view:
-            # Desconectar primero (si estaba conectada) para evitar dobles conexiones
-            try:
-                self._settings_model.colchonChanged.disconnect(self._on_colchon_changed)
-            except (TypeError, RuntimeError):
-                pass
-            
-            # Ahora conectar
-            self._settings_model.colchonChanged.connect(self._on_colchon_changed)
-            print("[ForwardController] Señal colchonChanged conectada (sin duplicados)")
-    
-    def _on_colchon_changed(self, nuevo_colchon):
-        """
-        Recalcula el límite máximo cuando cambia el colchón de seguridad.
-        Si hay un cliente seleccionado, recalcula todo llamando a select_client.
-        
-        Args:
-            nuevo_colchon: Nuevo valor del colchón en porcentaje (float o None)
-        """
-        print(f"[ForwardController] _on_colchon_changed: {nuevo_colchon}")
-        
-        # Si hay un cliente seleccionado, recalcular sus límites
-        if self._current_client_nit:
-            # Obtener nombre del cliente actual
-            nombre = ""
-            if self._data_model:
-                nombre = self._data_model.get_nombre_by_nit(self._current_client_nit)
-            
-            # Recalcular todo llamando a select_client
-            # (que ahora tiene kill-switch para evitar loops)
-            print(f"   → Recalculando límites para cliente actual: {self._current_client_nit}")
-            self.select_client(self._current_client_nit)
-        else:
-            print("   → Sin cliente seleccionado, no hay nada que recalcular")
     
     def load_415(self, file_path: str) -> None:
         """
@@ -648,53 +605,32 @@ class ForwardController:
                 nit_norm = str(nit).replace("-", "").strip()
                 cliente_info = self._settings_model.get_linea_credito_por_nit(nit_norm)
                 
-                # Obtener colchón actual desde SettingsModel (puede ser None)
-                colchon = self._settings_model.colchon_seguridad
-                
                 if cliente_info:
                     # Cliente encontrado en líneas de crédito
                     linea_credito = float(cliente_info['monto_cop'] or 0.0)
                     
-                    # Validar que el colchón no sea None antes de calcular límite
-                    if colchon is not None:
-                        limite_maximo = linea_credito * (1 - (float(colchon) / 100))
-                        
-                        print(f"   → Límites del cliente (desde SettingsModel):")
-                        print(f"      Línea de crédito: $ {linea_credito:,.0f}")
-                        print(f"      Colchón interno: {colchon:.2f}%")
-                        print(f"      Límite máximo: $ {limite_maximo:,.0f}")
-                        
-                        # 🔹 Actualizar vista con límites (sin disparar cálculos de exposición)
-                        if self._view:
-                            self._view.set_credit_params(
-                                linea=f"$ {linea_credito:,.0f}",
-                                colchon=f"{colchon:.2f}%",
-                                limite=f"$ {limite_maximo:,.0f}"
-                            )
-                    else:
-                        # Colchón es None → no se puede calcular límite
-                        print(f"   → Cliente encontrado, pero colchón NO configurado:")
-                        print(f"      Línea de crédito: $ {linea_credito:,.0f}")
-                        print(f"      Colchón interno: (no configurado)")
-                        print(f"      Límite máximo: (no calculable)")
-                        
-                        if self._view:
-                            self._view.set_credit_params(
-                                linea=f"$ {linea_credito:,.0f}",
-                                colchon="—",
-                                limite="—"
-                            )
-                            self._view.notify("Configure el Colchón de seguridad en Configuraciones.", "info")
+                    # Obtener límite LLL 25% (COP) si existe
+                    lll_cop = cliente_info.get('lll_cop', None)
+                    
+                    print(f"   → Datos del cliente (desde SettingsModel):")
+                    print(f"      Línea de crédito: $ {linea_credito:,.0f}")
+                    if lll_cop:
+                        print(f"      LLL 25% (COP): $ {lll_cop:,.0f}")
+                    
+                    # 🔹 Actualizar vista con línea de crédito
+                    # (colchón y límite ahora son informativos, no se calculan globalmente)
+                    if self._view:
+                        limite_display = f"$ {lll_cop:,.0f}" if lll_cop else "—"
+                        self._view.set_credit_params(
+                            linea=f"$ {linea_credito:,.0f}",
+                            colchon="—",  # Ya no se usa colchón global
+                            limite=limite_display
+                        )
                 else:
-                    # Cliente NO encontrado en líneas de crédito → NO setear defaults numéricos
+                    # Cliente NO encontrado en líneas de crédito
                     print(f"   ⚠️  Cliente con NIT {nit_norm} no encontrado en líneas de crédito.")
                     if self._view:
-                        colchon_display = f"{colchon:.2f}%" if colchon is not None else "—"
-                        self._view.set_credit_params(
-                            linea="—",
-                            colchon=colchon_display,  # Mostrar colchón vigente si existe
-                            limite="—"
-                        )
+                        self._view.set_credit_params(linea="—", colchon="—", limite="—")
             else:
                 print(f"   ⚠️  SettingsModel no disponible, no se pueden cargar límites del cliente.")
                 if self._view:

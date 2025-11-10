@@ -10,7 +10,7 @@ from PySide6.QtWidgets import (
     QHeaderView, QAbstractItemView, QMessageBox
 )
 from PySide6.QtCore import Signal, Qt
-from PySide6.QtGui import QFont
+from PySide6.QtGui import QFont, QDoubleValidator
 from typing import Dict, Any
 
 
@@ -90,31 +90,29 @@ class SettingsView(QWidget):
         Crea el bloque de Parámetros Generales.
         
         Returns:
-            QGroupBox con Patrimonio Técnico y TRM
+            QGroupBox con TRM COP/USD y TRM EUR/USD
         """
         group = QGroupBox("Parámetros Generales")
         layout = QFormLayout(group)
         layout.setSpacing(8)
         
-        # Patrimonio Técnico Vigente (COP reales, no millones)
-        self.inpPatrimonio = QDoubleSpinBox()
-        self.inpPatrimonio.setDecimals(2)
-        self.inpPatrimonio.setMaximum(1_000_000_000_000.00)  # 1 billón COP
-        self.inpPatrimonio.setMinimum(0.00)
-        self.inpPatrimonio.setSingleStep(1_000_000.00)       # pasos de $1M COP
-        self.inpPatrimonio.setValue(50_000_000_000.00)       # Default: 50 mil millones COP
-        self.inpPatrimonio.setSuffix(" COP")
-        self.inpPatrimonio.setGroupSeparatorShown(True)
-        layout.addRow("Patrimonio Técnico Vigente (COP):", self.inpPatrimonio)
+        # TRM Vigente del día COP/USD
+        self.trm_cop_usd = QLineEdit()
+        self.trm_cop_usd.setPlaceholderText("Ingrese TRM COP/USD")
+        validator_cop = QDoubleValidator(0.0, 999999.0, 6)
+        validator_cop.setNotation(QDoubleValidator.StandardNotation)
+        self.trm_cop_usd.setValidator(validator_cop)
+        self.trm_cop_usd.setMinimumWidth(200)
+        layout.addRow("TRM Vigente del día (COP/USD):", self.trm_cop_usd)
         
-        # TRM vigente del día
-        self.inpTRM = QDoubleSpinBox()
-        self.inpTRM.setRange(0, 10000)
-        self.inpTRM.setValue(4200.50)  # Default: 4200.50
-        self.inpTRM.setDecimals(2)
-        self.inpTRM.setSuffix(" COP/USD")
-        self.inpTRM.setGroupSeparatorShown(True)
-        layout.addRow("TRM vigente del día:", self.inpTRM)
+        # TRM Vigente del día EUR/USD
+        self.trm_eur_usd = QLineEdit()
+        self.trm_eur_usd.setPlaceholderText("Ingrese TRM EUR/USD")
+        validator_eur = QDoubleValidator(0.0, 999999.0, 6)
+        validator_eur.setNotation(QDoubleValidator.StandardNotation)
+        self.trm_eur_usd.setValidator(validator_eur)
+        self.trm_eur_usd.setMinimumWidth(200)
+        layout.addRow("TRM Vigente del día (EUR/USD):", self.trm_eur_usd)
         
         return group
     
@@ -123,7 +121,7 @@ class SettingsView(QWidget):
         Crea el bloque de Parámetros Normativos.
         
         Returns:
-            QGroupBox con los 3 parámetros normativos
+            QGroupBox con parámetros normativos
         """
         group = QGroupBox("Parámetros Normativos")
         layout = QFormLayout(group)
@@ -144,14 +142,6 @@ class SettingsView(QWidget):
         self.inpLimEntFin.setDecimals(1)
         self.inpLimEntFin.setSuffix(" %")
         layout.addRow("Límite máx. concentración entidades financieras (%):", self.inpLimEntFin)
-        
-        # Colchón de seguridad (%)
-        self.inpColchon = QDoubleSpinBox()
-        self.inpColchon.setRange(0, 50)
-        self.inpColchon.setValue(5)
-        self.inpColchon.setDecimals(1)
-        self.inpColchon.setSuffix(" %")
-        layout.addRow("Colchón de seguridad (%):", self.inpColchon)
         
         return group
     
@@ -287,13 +277,21 @@ class SettingsView(QWidget):
                 "monto (cop)": "Monto (COP)",
                 "monto(cop)": "Monto (COP)",  # Sin espacio antes del paréntesis
                 "monto": "Monto (COP)",        # Solo "Monto"
+                "fecha pt última actualización": "Fecha PT última actualización",
+                "fecha pt ultima actualizacion": "Fecha PT última actualización",
+                "patrimonio técnico": "Patrimonio técnico",
+                "patrimonio tecnico": "Patrimonio técnico",
+                "lll 25% (cop)": "LLL 25% (COP)",
+                "lll 25% (eur)": "LLL 25% (EUR)",
+                "eur (mm)": "EUR (MM)",
+                "cop (mm)": "COP (MM)",
             }
             
             # Mapear columnas según alias (insensible a mayúsculas/minúsculas)
             df.rename(columns=lambda c: alias.get(c.lower(), c), inplace=True)
             print(f"   ✓ Columnas después de mapeo: {list(df.columns)}")
             
-            # Columnas esperadas
+            # Columnas esperadas (mínimas)
             columnas_esperadas = ["NIT", "Contraparte", "Grupo Conectado de Contrapartes", "Monto (COP)"]
             
             # Validar columnas requeridas
@@ -343,6 +341,65 @@ class SettingsView(QWidget):
             
             print(f"   ✓ Montos limpiados y convertidos (miles de millones → COP reales)")
             
+            # 🔹 Función auxiliar para convertir valores en miles de millones a valores reales
+            def _to_real(value_str):
+                """
+                Convierte un string en miles de millones a valor real.
+                Ej: "1.5" → 1,500,000,000
+                    "12,557" → 12,557,000,000,000
+                """
+                if pd.isna(value_str) or value_str == "":
+                    return 0.0
+                
+                try:
+                    # Limpiar: quitar espacios, comas,puntos (excepto el punto decimal)
+                    value_clean = str(value_str).strip().replace(",", "").replace(" ", "")
+                    # Convertir a float
+                    value_float = float(value_clean)
+                    # Multiplicar por mil millones
+                    return value_float * 1_000_000_000
+                except Exception as e:
+                    print(f"      Advertencia: No se pudo convertir '{value_str}': {e}")
+                    return 0.0
+            
+            # 🔹 Procesar columnas adicionales si existen
+            if "Patrimonio técnico" in df.columns:
+                df["Patrimonio técnico"] = df["Patrimonio técnico"].apply(_to_real)
+                print(f"   ✓ Patrimonio técnico convertido (miles de millones → reales)")
+            
+            if "LLL 25% (COP)" in df.columns:
+                df["LLL 25% (COP)"] = df["LLL 25% (COP)"].apply(_to_real)
+                print(f"   ✓ LLL 25% (COP) convertido (miles de millones → reales)")
+            
+            if "EUR (MM)" in df.columns:
+                df["EUR (MM)"] = df["EUR (MM)"].apply(_to_real)
+                print(f"   ✓ EUR (MM) convertido (miles de millones → reales)")
+            
+            # 🔹 Calcular columnas dinámicas basadas en TRM
+            if self._settings_model:
+                trm_cop_usd = self._settings_model.trm_cop_usd()
+                trm_eur_usd = self._settings_model.trm_eur_usd()
+                
+                # Calcular LLL 25% (EUR) solo si tenemos TRM COP/USD
+                if "LLL 25% (COP)" in df.columns:
+                    if trm_cop_usd and trm_cop_usd > 0:
+                        df["LLL 25% (EUR)"] = df["LLL 25% (COP)"] / trm_cop_usd
+                        print(f"   ✓ LLL 25% (EUR) calculado usando TRM COP/USD = {trm_cop_usd:,.6f}")
+                    else:
+                        df["LLL 25% (EUR)"] = None
+                        print(f"   ⚠️  LLL 25% (EUR) no calculado (falta TRM COP/USD)")
+                
+                # Calcular COP (MM) solo si tenemos TRM COP/USD y EUR (MM)
+                if "EUR (MM)" in df.columns:
+                    if trm_cop_usd and trm_cop_usd > 0:
+                        df["COP (MM)"] = df["EUR (MM)"] * trm_cop_usd
+                        print(f"   ✓ COP (MM) calculado usando TRM COP/USD = {trm_cop_usd:,.6f}")
+                    else:
+                        df["COP (MM)"] = None
+                        print(f"   ⚠️  COP (MM) no calculado (falta TRM COP/USD)")
+            else:
+                print(f"   ⚠️  Modelo no disponible, columnas dinámicas no calculadas")
+            
             # 🔹 Limpiar filas sin NIT o Contraparte
             filas_antes = len(df)
             df = df.dropna(subset=["NIT", "Contraparte"])
@@ -390,39 +447,78 @@ class SettingsView(QWidget):
         Args:
             df: DataFrame de pandas con las líneas de crédito
         """
+        import pandas as pd
+        
         print(f"[SettingsView] Mostrando {len(df)} líneas de crédito en la tabla...")
+        
+        # Determinar columnas a mostrar (dinámicas según lo que esté en el DataFrame)
+        columnas_base = ["NIT", "Contraparte", "Grupo Conectado de Contrapartes", "Monto (COP)"]
+        columnas_opcionales = ["Fecha PT última actualización", "Patrimonio técnico", 
+                              "LLL 25% (COP)", "LLL 25% (EUR)", "EUR (MM)", "COP (MM)"]
+        
+        columnas_a_mostrar = columnas_base + [col for col in columnas_opcionales if col in df.columns]
         
         # Limpiar tabla
         self.tblLineasCredito.setRowCount(0)
-        self.tblLineasCredito.setColumnCount(4)
+        self.tblLineasCredito.setColumnCount(len(columnas_a_mostrar))
         
-        # Configurar encabezados
-        self.tblLineasCredito.setHorizontalHeaderLabels(["NIT", "Contraparte", "Grupo", "Monto (COP)"])
+        # Configurar encabezados (abreviar nombres largos)
+        headers_display = []
+        for col in columnas_a_mostrar:
+            if col == "Grupo Conectado de Contrapartes":
+                headers_display.append("Grupo")
+            elif col == "Fecha PT última actualización":
+                headers_display.append("Fecha PT")
+            elif col == "Patrimonio técnico":
+                headers_display.append("Patrimonio Téc.")
+            else:
+                headers_display.append(col)
+        
+        self.tblLineasCredito.setHorizontalHeaderLabels(headers_display)
         
         # Insertar filas
         for i, row in df.iterrows():
             self.tblLineasCredito.insertRow(i)
             
-            # NIT (string)
-            self.tblLineasCredito.setItem(i, 0, QTableWidgetItem(str(row["NIT"])))
-            
-            # Contraparte (string)
-            self.tblLineasCredito.setItem(i, 1, QTableWidgetItem(str(row["Contraparte"])))
-            
-            # Grupo Conectado (string)
-            self.tblLineasCredito.setItem(i, 2, QTableWidgetItem(str(row["Grupo Conectado de Contrapartes"])))
-            
-            # Monto (COP) - formato numérico con separadores de miles
-            monto_value = float(row["Monto (COP)"])
-            monto_formatted = f"{monto_value:,.2f}"
-            self.tblLineasCredito.setItem(i, 3, QTableWidgetItem(monto_formatted))
+            for j, col in enumerate(columnas_a_mostrar):
+                valor = row[col]
+                
+                # Formatear según tipo de dato
+                if col == "NIT":
+                    texto = str(valor)
+                elif col in ["Contraparte", "Grupo Conectado de Contrapartes", "Fecha PT última actualización"]:
+                    texto = str(valor) if pd.notna(valor) else ""
+                elif col in ["Monto (COP)", "Patrimonio técnico", "LLL 25% (COP)", "LLL 25% (EUR)", "EUR (MM)", "COP (MM)"]:
+                    # Formatear como moneda/número
+                    if pd.notna(valor) and valor is not None:
+                        texto = f"{float(valor):,.2f}"
+                    else:
+                        texto = "—"
+                else:
+                    texto = str(valor) if pd.notna(valor) else ""
+                
+                self.tblLineasCredito.setItem(i, j, QTableWidgetItem(texto))
         
-        # Ajustar columnas para distribución uniforme
+        # Ajustar columnas para distribución proporcional
         header = self.tblLineasCredito.horizontalHeader()
         header.setStretchLastSection(True)
-        header.setSectionResizeMode(QHeaderView.Stretch)
+        header.setSectionResizeMode(QHeaderView.Interactive)
         
-        print(f"   ✓ Tabla actualizada con {len(df)} filas")
+        # Set column widths proporcionales
+        total_width = self.tblLineasCredito.width()
+        num_cols = len(columnas_a_mostrar)
+        if num_cols <= 4:
+            # Solo columnas básicas: anchos fijos
+            header.resizeSection(0, 120)  # NIT
+            header.resizeSection(1, 200)  # Contraparte
+            header.resizeSection(2, 150)  # Grupo
+            header.resizeSection(3, 150)  # Monto
+        else:
+            # Con columnas adicionales: distribución más uniforme
+            for col_idx in range(num_cols):
+                header.resizeSection(col_idx, total_width // num_cols)
+        
+        print(f"   ✓ Tabla actualizada con {len(df)} filas y {num_cols} columnas")
     
     def load_parametros_generales(self, patrimonio_cop: float, trm: float) -> None:
         """
