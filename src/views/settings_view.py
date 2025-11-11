@@ -7,7 +7,7 @@ from PySide6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QLabel, 
     QPushButton, QGroupBox, QFormLayout,
     QLineEdit, QDoubleSpinBox, QFileDialog, QTableWidget, QTableWidgetItem,
-    QHeaderView, QAbstractItemView, QMessageBox
+    QHeaderView, QAbstractItemView, QMessageBox, QAbstractSpinBox
 )
 from PySide6.QtCore import Signal, Qt
 from PySide6.QtGui import QFont, QDoubleValidator
@@ -133,12 +133,44 @@ class SettingsView(QWidget):
         self.inpLimEndeud.setValue(25.0)
         self.inpLimEndeud.setDecimals(1)
         self.inpLimEndeud.setSuffix(" %")
-        self.inpLimEndeud.setEnabled(False)  # No editable
+        
+        # Sin flechas
+        self.inpLimEndeud.setButtonSymbols(QAbstractSpinBox.NoButtons)
+        
+        # No editable pero sin grisear: usar readOnly en vez de setEnabled(False)
+        self.inpLimEndeud.setReadOnly(True)
+        
+        # Asegurar aspecto de "cajita"
+        self.inpLimEndeud.setStyleSheet("""
+            QDoubleSpinBox {
+                background: white;
+                border: 1px solid #C8C8C8;
+                border-radius: 4px;
+                padding: 4px 8px;
+            }
+            QDoubleSpinBox:focus {
+                border: 1px solid #6AA0FF;
+            }
+        """)
         layout.addRow("Límite máximo de endeudamiento LLL (%):", self.inpLimEndeud)
         
         # Colchón de seguridad (%) - Valor fijo 10% (solo informativo)
-        self.lblColchonSeguridad = QLabel("10.0 %")
-        layout.addRow("Colchón de seguridad (%):", self.lblColchonSeguridad)
+        # Usar QLineEdit read-only para replicar la misma "caja"
+        self.leColchonSeguridad = QLineEdit("10.0 %")
+        self.leColchonSeguridad.setReadOnly(True)
+        self.leColchonSeguridad.setAlignment(Qt.AlignLeft | Qt.AlignVCenter)
+        self.leColchonSeguridad.setStyleSheet("""
+            QLineEdit {
+                background: white;
+                border: 1px solid #C8C8C8;
+                border-radius: 4px;
+                padding: 4px 8px;
+            }
+            QLineEdit:focus {
+                border: 1px solid #6AA0FF;
+            }
+        """)
+        layout.addRow("Colchón de seguridad (%):", self.leColchonSeguridad)
         
         return group
     

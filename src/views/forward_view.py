@@ -70,7 +70,8 @@ class ForwardView(QWidget):
         self.lblLimiteMax = None
         self.lblOutstanding = None
         self.lblOutstandingSim = None
-        self.lblDisponibilidad = None
+        self.lblDispLCA = None
+        self.lblDispLLL = None
         
         self.chartContainer = None
         
@@ -377,45 +378,58 @@ class ForwardView(QWidget):
         card_c.setMaximumHeight(120)
         column_layout.addWidget(card_c)
         
-        # Card D: Exposición
+        # Card D: Exposición (2 filas x 2 columnas)
         card_d = self._create_card("Exposición")
         card_d_layout = QGridLayout()
         card_d_layout.setSpacing(8)
         card_d_layout.setContentsMargins(10, 10, 10, 10)
         
-        # Outstanding (columna 0)
+        # Fila 1: Outstanding y Outstanding + simulación
+        # Outstanding (fila 0, columna 0)
         lbl_out_title = QLabel("Outstanding")
         lbl_out_title.setAlignment(Qt.AlignCenter)
-        self.lblOutstanding = QLabel("—")  # Iniciar sin valor
+        self.lblOutstanding = QLabel("—")
         self.lblOutstanding.setObjectName("lblOutstanding")
         self.lblOutstanding.setFont(font_value)
         self.lblOutstanding.setAlignment(Qt.AlignCenter)
         card_d_layout.addWidget(lbl_out_title, 0, 0)
         card_d_layout.addWidget(self.lblOutstanding, 1, 0)
         
-        # Outstanding + simulación (columna 1)
-        lbl_outsim_title = QLabel("Outst. + simulación")
+        # Outstanding + simulación (fila 0, columna 1)
+        lbl_outsim_title = QLabel("Outstanding + simulación")
         lbl_outsim_title.setAlignment(Qt.AlignCenter)
-        self.lblOutstandingSim = QLabel("—")  # Iniciar sin valor
+        self.lblOutstandingSim = QLabel("—")
         self.lblOutstandingSim.setObjectName("lblOutstandingSim")
         self.lblOutstandingSim.setFont(font_value)
         self.lblOutstandingSim.setAlignment(Qt.AlignCenter)
         card_d_layout.addWidget(lbl_outsim_title, 0, 1)
         card_d_layout.addWidget(self.lblOutstandingSim, 1, 1)
         
-        # Disponibilidad (columna 2)
-        lbl_disp_title = QLabel("Disponibilidad de línea")
-        lbl_disp_title.setAlignment(Qt.AlignCenter)
-        self.lblDisponibilidad = QLabel("—")  # Iniciar sin valor
-        self.lblDisponibilidad.setObjectName("lblDisponibilidad")
-        self.lblDisponibilidad.setFont(font_value)
-        self.lblDisponibilidad.setAlignment(Qt.AlignCenter)
-        self.lblDisponibilidad.setStyleSheet("QLabel { color: #2e7d32; font-weight: bold; }")
-        card_d_layout.addWidget(lbl_disp_title, 0, 2)
-        card_d_layout.addWidget(self.lblDisponibilidad, 1, 2)
+        # Fila 2: Disponibilidad LCA y Disponibilidad LLL
+        # Disponibilidad LCA (fila 2, columna 0)
+        lbl_disp_lca_title = QLabel("Disponibilidad de línea (LCA)")
+        lbl_disp_lca_title.setAlignment(Qt.AlignCenter)
+        self.lblDispLCA = QLabel("—")
+        self.lblDispLCA.setObjectName("lblDispLCA")
+        self.lblDispLCA.setFont(font_value)
+        self.lblDispLCA.setAlignment(Qt.AlignCenter)
+        self.lblDispLCA.setStyleSheet("QLabel { color: #2e7d32; font-weight: bold; }")
+        card_d_layout.addWidget(lbl_disp_lca_title, 2, 0)
+        card_d_layout.addWidget(self.lblDispLCA, 3, 0)
+        
+        # Disponibilidad LLL (fila 2, columna 1)
+        lbl_disp_lll_title = QLabel("Disponibilidad de línea (LLL)")
+        lbl_disp_lll_title.setAlignment(Qt.AlignCenter)
+        self.lblDispLLL = QLabel("—")
+        self.lblDispLLL.setObjectName("lblDispLLL")
+        self.lblDispLLL.setFont(font_value)
+        self.lblDispLLL.setAlignment(Qt.AlignCenter)
+        self.lblDispLLL.setStyleSheet("QLabel { color: #2e7d32; font-weight: bold; }")
+        card_d_layout.addWidget(lbl_disp_lll_title, 2, 1)
+        card_d_layout.addWidget(self.lblDispLLL, 3, 1)
         
         card_d.setLayout(card_d_layout)
-        card_d.setMaximumHeight(120)
+        card_d.setMaximumHeight(200)  # Aumentado para acomodar 2 filas de datos
         column_layout.addWidget(card_d)
         
         column_layout.addStretch()
@@ -866,43 +880,67 @@ class ForwardView(QWidget):
         self.lblLineaCredito.setText(linea)
         self.lblLimiteMax.setText(limite)
     
+    def update_exposure_block(self, outstanding: str, outstanding_sim: str, disp_lca: str, disp_lll: str) -> None:
+        """
+        Actualiza todos los valores del bloque de Exposición.
+        
+        Args:
+            outstanding: Outstanding formateado (ej: "$ 1,234,567" o "—")
+            outstanding_sim: Outstanding + simulación formateado
+            disp_lca: Disponibilidad LCA formateada
+            disp_lll: Disponibilidad LLL formateada
+        """
+        print(f"[ForwardView] update_exposure_block: Outstanding={outstanding}, "
+              f"Outst+Sim={outstanding_sim}, DispLCA={disp_lca}, DispLLL={disp_lll}")
+        
+        self.lblOutstanding.setText(outstanding)
+        self.lblOutstandingSim.setText(outstanding_sim)
+        self.lblDispLCA.setText(disp_lca)
+        self.lblDispLLL.setText(disp_lll)
+        
+        # Cambiar color de disponibilidades según el valor
+        self._update_disp_color(self.lblDispLCA, disp_lca)
+        self._update_disp_color(self.lblDispLLL, disp_lll)
+    
+    def _update_disp_color(self, label, value_str: str) -> None:
+        """
+        Actualiza el color de un label de disponibilidad según su valor.
+        
+        Args:
+            label: QLabel a actualizar
+            value_str: Valor como string (puede contener "$ " y separadores)
+        """
+        if value_str == "—":
+            label.setStyleSheet("QLabel { color: #666; font-weight: bold; }")
+            return
+        
+        try:
+            # Extraer valor numérico del string
+            value = float(value_str.replace("$", "").replace(",", "").strip())
+            
+            if value < 0:
+                label.setStyleSheet("QLabel { color: #d32f2f; font-weight: bold; }")  # Rojo (negativo)
+            elif value < 1000000:  # Menos de 1 millón
+                label.setStyleSheet("QLabel { color: #f57c00; font-weight: bold; }")  # Naranja (bajo)
+            else:
+                label.setStyleSheet("QLabel { color: #2e7d32; font-weight: bold; }")  # Verde (OK)
+        except (ValueError, AttributeError):
+            label.setStyleSheet("QLabel { color: #666; font-weight: bold; }")  # Gris (sin datos)
+    
     def show_exposure(self, outstanding: float = None, total_con_simulacion: float = None,
                      disponibilidad: float = None) -> None:
         """
-        Actualiza la información de exposición.
+        [OBSOLETO] Método antiguo mantenido por compatibilidad.
+        Usar update_exposure_block() en su lugar.
         
         Args:
             outstanding: Exposición actual (opcional)
             total_con_simulacion: Exposición total con simulaciones (opcional)
             disponibilidad: Límite disponible (opcional)
         """
-        print(f"[ForwardView] show_exposure: outstanding={outstanding}, "
+        print(f"[ForwardView] show_exposure (obsoleto): outstanding={outstanding}, "
               f"total={total_con_simulacion}, disponibilidad={disponibilidad}")
-        
-        # Actualizar solo los valores que no sean None
-        if outstanding is not None:
-            self.lblOutstanding.setText(f"$ {outstanding:,.2f}")
-        else:
-            self.lblOutstanding.setText("—")
-        
-        # Outstanding + simulación: solo mostrar si se proporcionó un valor
-        if total_con_simulacion is not None:
-            self.lblOutstandingSim.setText(f"$ {total_con_simulacion:,.2f}")
-        else:
-            self.lblOutstandingSim.setText("—")  # No igualar al Outstanding
-        
-        if disponibilidad is not None:
-            self.lblDisponibilidad.setText(f"$ {disponibilidad:,.2f}")
-            
-            # Cambiar color según disponibilidad
-            if disponibilidad < 0:
-                self.lblDisponibilidad.setStyleSheet("QLabel { color: #d32f2f; font-weight: bold; }")
-            elif disponibilidad < 1000000:  # Menos de 1 millón
-                self.lblDisponibilidad.setStyleSheet("QLabel { color: #f57c00; font-weight: bold; }")
-            else:
-                self.lblDisponibilidad.setStyleSheet("QLabel { color: #2e7d32; font-weight: bold; }")
-        else:
-            self.lblDisponibilidad.setText("—")
+        print("   ⚠️  Usar update_exposure_block() en su lugar")
     
     def update_chart(self, data: Dict[str, Any]) -> None:
         """

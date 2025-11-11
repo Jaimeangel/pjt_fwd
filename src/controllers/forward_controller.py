@@ -120,7 +120,7 @@ class ForwardController:
             print("[ForwardController] IBR resolver configurado en modelo de simulaciones")
     
     def _connect_settings_signals(self):
-        """Conecta señales del SettingsModel para actualización automática de TRM."""
+        """Conecta señales del SettingsModel para actualización automática de TRM y líneas de crédito."""
         if self._settings_model:
             try:
                 self._settings_model.trm_cop_usdChanged.disconnect(self._refresh_info_basica)
@@ -130,11 +130,16 @@ class ForwardController:
                 self._settings_model.trm_cop_eurChanged.disconnect(self._refresh_info_basica)
             except (TypeError, RuntimeError):
                 pass
+            try:
+                self._settings_model.lineasCreditoChanged.disconnect(self.refresh_exposure_block)
+            except (TypeError, RuntimeError):
+                pass
             
             # Conectar señales
             self._settings_model.trm_cop_usdChanged.connect(self._refresh_info_basica)
             self._settings_model.trm_cop_eurChanged.connect(self._refresh_info_basica)
-            print("[ForwardController] Señales de SettingsModel conectadas para actualización automática de TRM")
+            self._settings_model.lineasCreditoChanged.connect(self.refresh_exposure_block)
+            print("[ForwardController] Señales de SettingsModel conectadas para actualización automática de TRM y líneas de crédito")
     
     def _refresh_info_basica(self, _=None):
         """
@@ -159,7 +164,94 @@ class ForwardController:
         self._view.update_info_basica(patrimonio_actual, trm_usd_str, trm_eur_str)
         
         print(f"[ForwardController] Información básica actualizada: TRM COP/USD={trm_usd_str}, TRM COP/EUR={trm_eur_str}")
+    
+    def refresh_exposure_block(self):
+        """
+        Actualiza el bloque de Exposición completo con los 4 valores:
+        - Outstanding
+        - Outstanding + simulación
+        - Disponibilidad LCA
+        - Disponibilidad LLL
         
+        Se debe llamar cuando:
+        - Se selecciona una contraparte
+        - Cambia el resultado de simulación
+        - Se limpia la selección o se eliminan simulaciones
+        - Se recargan las Líneas de Crédito en Settings
+        """
+        if not self._view or not self._data_model or not self._settings_model:
+            return
+        
+        def _fmt(v):
+            """Formatea un valor numérico a string con separador de miles o '—'."""
+            return f"$ {v:,.0f}" if v is not None else "—"
+        
+        # Obtener NIT del cliente actual
+        nit = self._data_model.current_client_nit()
+        df = self._settings_model.lineas_credito_df
+        
+        # Valores por defecto
+        LCA = None
+        LLL = None
+        
+        # Obtener LCA y LLL de la tabla de líneas de crédito
+        if nit and df is not None and not df.empty:
+            # Normalizar NIT (sin guiones, sin espacios)
+            nit_norm = str(nit).replace("-", "").strip()
+            row = df[df["NIT"].astype(str).str.replace("-", "").str.strip() == nit_norm]
+            
+            if not row.empty:
+                # Convertir de MM a COP reales (* 1,000,000,000)
+                if "COP (MM)" in row.columns:
+                    cop_mm = row["COP (MM)"].iloc[0]
+                    try:
+                        import pandas as pd
+                        if pd.notna(cop_mm):
+                            LCA = float(cop_mm) * 1_000_000_000.0
+                    except (ValueError, TypeError):
+                        pass
+                
+                if "LLL 25% (COP)" in row.columns:
+                    lll_mm = row["LLL 25% (COP)"].iloc[0]
+                    try:
+                        import pandas as pd
+                        if pd.notna(lll_mm):
+                            LLL = float(lll_mm) * 1_000_000_000.0
+                    except (ValueError, TypeError):
+                        pass
+        
+        # Obtener Outstanding y Outstanding + simulación
+        outstanding = self._data_model.outstanding_cop()
+        with_sim = self._data_model.outstanding_with_sim_cop()
+        
+        # Si no hay simulación, with_sim = outstanding
+        if with_sim is None and outstanding is not None:
+            with_sim = outstanding
+        
+        # Calcular disponibilidades
+        # Disp = Línea - Outstanding con simulación
+        disp_lca = None
+        disp_lll = None
+        
+        if LCA is not None and with_sim is not None:
+            disp_lca = LCA - with_sim
+        
+        if LLL is not None and with_sim is not None:
+            disp_lll = LLL - with_sim
+        
+        # Actualizar vista
+        self._view.update_exposure_block(
+            _fmt(outstanding),
+            _fmt(with_sim),
+            _fmt(disp_lca),
+            _fmt(disp_lll)
+        )
+        
+        print(f"[ForwardController] Bloque de exposición actualizado:")
+        print(f"   Outstanding: {_fmt(outstanding)}")
+        print(f"   Outstanding + Sim: {_fmt(with_sim)}")
+        print(f"   Disp LCA: {_fmt(disp_lca)}")
+        print(f"   Disp LLL: {_fmt(disp_lll)}")
     
     def load_415(self, file_path: str) -> None:
         """
@@ -621,8 +713,8 @@ class ForwardController:
                 # Limpiar vista
                 if self._view:
                     self._view.show_exposure(outstanding=0.0, total_con_simulacion=None, disponibilidad=None)
-                    if self._operations_table_model:
-                        self._operations_table_model.set_operations([])
+                if self._operations_table_model:
+                    self._operations_table_model.set_operations([])
                 return
             
             print(f"   → NIT determinado: {nit}")
@@ -720,17 +812,12 @@ class ForwardController:
                 else:
                     print(f"   → Sin operaciones vigentes para este cliente (Outstanding: $ 0.00)")
             
-            # Actualizar outstanding en la vista
+            # Actualizar outstanding en el modelo
             self._current_outstanding = outstanding
-            
-            if self._view:
-                # Solo mostrar Outstanding; NO igualar OutstandingSim aquí
-                # OutstandingSim se actualiza únicamente al pulsar "Simular"
-                self._view.show_exposure(
-                    outstanding=outstanding,
-                    total_con_simulacion=None,  # Dejar en "—" hasta simular
-                    disponibilidad=None
-                )
+            if self._data_model:
+                self._data_model.set_outstanding_cop(outstanding)
+                # Limpiar simulación (no hay simulación al seleccionar cliente)
+                self._data_model.set_outstanding_with_sim_cop(None)
             
             # Cargar operaciones vigentes del cliente en la tabla
             if self._data_model and self._operations_table_model:
@@ -741,6 +828,9 @@ class ForwardController:
                 # Actualizar vista de la tabla
                 if self._view:
                     self._view.set_operations_table(self._operations_table_model)
+            
+            # 🔹 Actualizar bloque de exposición completo (Outstanding, Disp LCA, Disp LLL)
+            self.refresh_exposure_block()
             
             # Emitir señal global
             if self._signals:
@@ -813,6 +903,13 @@ class ForwardController:
             success = self._simulations_table_model.remove_rows(rows)
             if success:
                 print(f"   → {len(rows)} fila(s) eliminada(s) de la tabla")
+        
+        # Limpiar Outstanding + simulación (ya no hay simulaciones activas)
+        if self._data_model:
+            self._data_model.set_outstanding_with_sim_cop(None)
+        
+        # 🔹 Actualizar bloque de exposición (vuelve a mostrar solo Outstanding)
+        self.refresh_exposure_block()
         
         if self._signals:
             self._signals.forward_simulations_changed.emit()
@@ -908,20 +1005,22 @@ class ForwardController:
         
         print(f"      ✓ Exposición total: $ {exp_total:,.2f} COP")
         
-        # 5) Mostrar en UI
+        # 5) Actualizar modelo y UI
         outstanding = self._data_model.get_outstanding_por_nit(nit) if self._data_model else 0.0
         
         print(f"\n   📈 Métricas de Exposición:")
         print(f"      Outstanding actual: $ {outstanding:,.2f}")
         print(f"      Total con simulación ({len(simulated_ops)} ops): $ {exp_total:,.2f}")
         
+        # Guardar en el modelo
+        if self._data_model:
+            self._data_model.set_outstanding_cop(outstanding)
+            self._data_model.set_outstanding_with_sim_cop(exp_total)
+        
+        # 🔹 Actualizar bloque de exposición completo
+        self.refresh_exposure_block()
+        
         if self._view:
-            self._view.show_exposure(
-                outstanding=outstanding,
-                total_con_simulacion=exp_total,
-                disponibilidad=None
-            )
-            
             # Mensaje diferenciado según cantidad de operaciones
             if len(simulated_ops) == 1:
                 mensaje = f"Simulación procesada: Exposición total $ {exp_total:,.2f}"

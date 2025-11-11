@@ -34,6 +34,10 @@ class ForwardDataModel:
         self.outstanding_por_cliente: Dict[str, float] = {}
         self.ops_vigentes_por_cliente: Dict[str, List[Dict[str, Any]]] = {}
         
+        # Exposición del cliente actual (COP reales)
+        self._outstanding_cop: Optional[float] = None
+        self._outstanding_with_sim_cop: Optional[float] = None
+        
         # Mapeos NIT <-> Nombre de contraparte
         self.nit_to_nombre: Dict[str, str] = {}
         self.nombre_to_nit: Dict[str, str] = {}
@@ -400,4 +404,50 @@ class ForwardDataModel:
         self.ibr_tamano_kb = None
         self.ibr_timestamp = None
         self.ibr_estado = "—"
+    
+    # Métodos para exposición del cliente actual
+    def outstanding_cop(self) -> Optional[float]:
+        """
+        Obtiene el outstanding del cliente actual en COP reales.
+        
+        Returns:
+            Outstanding en COP o None si no hay datos
+        """
+        return self._outstanding_cop
+    
+    def set_outstanding_cop(self, value: Optional[float]) -> None:
+        """
+        Establece el outstanding del cliente actual en COP reales.
+        
+        Args:
+            value: Outstanding en COP o None
+        """
+        self._outstanding_cop = value
+    
+    def outstanding_with_sim_cop(self) -> Optional[float]:
+        """
+        Obtiene el outstanding + simulación del cliente actual en COP reales.
+        
+        Returns:
+            Outstanding con simulación en COP o None si no hay simulación
+        """
+        return self._outstanding_with_sim_cop
+    
+    def set_outstanding_with_sim_cop(self, value: Optional[float]) -> None:
+        """
+        Establece el outstanding + simulación del cliente actual en COP reales.
+        
+        Args:
+            value: Outstanding con simulación en COP o None
+        """
+        self._outstanding_with_sim_cop = value
+    
+    def current_client_nit(self) -> Optional[str]:
+        """
+        Obtiene el NIT del cliente actualmente seleccionado.
+        
+        Returns:
+            NIT del cliente actual o None
+        """
+        return self.current_nit
 
