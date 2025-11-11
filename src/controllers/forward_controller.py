@@ -239,13 +239,18 @@ class ForwardController:
         if LLL is not None and with_sim is not None:
             disp_lll = LLL - with_sim
         
-        # Actualizar vista
+        # Actualizar vista (labels de texto)
         self._view.update_exposure_block(
             _fmt(outstanding),
             _fmt(with_sim),
             _fmt(disp_lca),
             _fmt(disp_lll)
         )
+        
+        # Actualizar gráfica dual de consumo de línea
+        # Consumo = Outstanding + simulación si existe, sino Outstanding
+        consumo = with_sim if with_sim is not None else outstanding
+        self._view.update_consumo_dual_chart(LCA, LLL, consumo)
         
         print(f"[ForwardController] Bloque de exposición actualizado:")
         print(f"   Outstanding: {_fmt(outstanding)}")

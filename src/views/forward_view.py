@@ -13,6 +13,9 @@ from PySide6.QtWidgets import (
 from PySide6.QtCore import Signal, Qt
 from PySide6.QtGui import QFont
 
+from matplotlib.backends.backend_qtagg import FigureCanvasQTAgg as FigureCanvas
+from matplotlib.figure import Figure
+
 
 class ForwardView(QWidget):
     """
@@ -74,6 +77,11 @@ class ForwardView(QWidget):
         self.lblDispLLL = None
         
         self.chartContainer = None
+        
+        # Referencias para gráfica de consumo de línea (dual chart)
+        self.fig_consumo2 = None
+        self.ax_consumo2 = None
+        self.canvas_consumo2 = None
         
         self.btnAddSim = None
         self.btnDelSim = None
@@ -447,23 +455,20 @@ class ForwardView(QWidget):
         card_e = self._create_card("Consumo de línea")
         card_e_layout = QVBoxLayout()
         
-        # Placeholder de gráfica
-        self.chartContainer = QWidget()
-        self.chartContainer.setObjectName("chartContainer")
-        self.chartContainer.setMinimumHeight(250)
-        self.chartContainer.setStyleSheet(
-            "QWidget#chartContainer { background-color: #fafafa; "
-            "border: 2px dashed #ccc; border-radius: 4px; }"
-        )
+        # Crear figura de matplotlib (dual chart: LCA y LLL)
+        self.fig_consumo2 = Figure(figsize=(5.2, 2.6), tight_layout=True)
+        self.ax_consumo2 = self.fig_consumo2.add_subplot(111)
+        self.canvas_consumo2 = FigureCanvas(self.fig_consumo2)
         
-        # Label placeholder
-        chart_placeholder_layout = QVBoxLayout(self.chartContainer)
-        lbl_placeholder = QLabel("Gráfica pendiente")
-        lbl_placeholder.setAlignment(Qt.AlignCenter)
-        lbl_placeholder.setStyleSheet("QLabel { color: #999; font-size: 14px; }")
-        chart_placeholder_layout.addWidget(lbl_placeholder)
+        # Configuración inicial de ejes
+        self.ax_consumo2.set_title("Consumo de línea (LCA / LLL)", fontsize=11, weight='bold')
+        self.ax_consumo2.set_ylabel("COP", fontsize=9)
+        self.ax_consumo2.set_xticks([0, 1])
+        self.ax_consumo2.set_xticklabels(["Línea Crd LCA", "Línea Crd LLL"])
+        self.ax_consumo2.tick_params(axis='both', which='major', labelsize=9)
         
-        card_e_layout.addWidget(self.chartContainer)
+        # Añadir el canvas al layout
+        card_e_layout.addWidget(self.canvas_consumo2)
         
         card_e.setLayout(card_e_layout)
         column_layout.addWidget(card_e)
@@ -941,6 +946,89 @@ class ForwardView(QWidget):
         print(f"[ForwardView] show_exposure (obsoleto): outstanding={outstanding}, "
               f"total={total_con_simulacion}, disponibilidad={disponibilidad}")
         print("   ⚠️  Usar update_exposure_block() en su lugar")
+    
+    def update_consumo_dual_chart(self,
+                                  lca_total: float | None,
+                                  lll_total: float | None,
+                                  consumo: float | None) -> None:
+        """
+        Actualiza la gráfica dual de consumo de línea (LCA / LLL).
+        
+        Muestra dos barras:
+        - Base (límite total) con transparencia
+        - Consumo verde (hasta el límite)
+        - Exceso rojo (si el consumo supera el límite)
+        
+        Args:
+            lca_total: Línea de crédito autorizada total en COP
+            lll_total: Límite máximo permitido (LLL) total en COP
+            consumo: Exposición actual (Outstanding o Outstanding + simulación) en COP
+        """
+        if not self.ax_consumo2 or not self.canvas_consumo2:
+            return
+        
+        ax = self.ax_consumo2
+        ax.clear()
+        ax.set_title("Consumo de línea (LCA / LLL)", fontsize=11, weight='bold')
+        ax.set_ylabel("COP", fontsize=9)
+        ax.set_xticks([0, 1])
+        ax.set_xticklabels(["Línea Crd LCA", "Línea Crd LLL"])
+        ax.tick_params(axis='both', which='major', labelsize=9)
+        
+        # Si falta data, solo redibuja ejes
+        if lca_total is None or lll_total is None or consumo is None:
+            self.canvas_consumo2.draw_idle()
+            return
+        
+        # Totales (límites)
+        totals = [max(lca_total, 0), max(lll_total, 0)]
+        
+        # Colores base por barra (límite)
+        base_colors = ["#3f51b5", "#8e24aa"]   # LCA (azul), LLL (morado)
+        base_alpha = 0.25
+        
+        # Dibuja las barras base (límite total)
+        ax.bar([0, 1], totals, color=base_colors, alpha=base_alpha, 
+               edgecolor="#455A64", linewidth=1.0, label="Límite", width=0.6)
+        
+        # Consumo: usar mismo valor para comparar contra ambos límites
+        consumos = [consumo, consumo]
+        
+        # Segmentos: verde = min(consumo, límite); rojo = exceso
+        verdes = [min(c, t) for c, t in zip(consumos, totals)]
+        excesos = [max(c - t, 0) for c, t in zip(consumos, totals)]
+        
+        # Apilar: primero verde, luego rojo si aplica
+        ax.bar([0, 1], verdes, color="#2e7d32", 
+               label="Consumo (Outstanding / Sim)", zorder=3, width=0.6)
+        ax.bar([0, 1], excesos, bottom=verdes, color="#c62828", 
+               label="Exceso", zorder=3, width=0.6)
+        
+        # Etiquetas con valores absolutos
+        for x, t, c, v, e in zip([0, 1], totals, consumos, verdes, excesos):
+            # Total límite (encima de la barra)
+            ax.text(x, t * 1.01, f"{t:,.0f}", ha="center", va="bottom", 
+                   fontsize=9, color="#263238", weight='bold')
+            
+            # Consumo hasta el límite (centro del tramo verde)
+            y_text = v/2 if e == 0 else v/2
+            if v > 0:
+                ax.text(x, y_text, f"{min(c, t):,.0f}", ha="center", va="center", 
+                       fontsize=9, color="white", weight='bold')
+            
+            # Exceso (centro del tramo rojo)
+            if e > 0:
+                ax.text(x, v + e/2, f"+{e:,.0f}", ha="center", va="center", 
+                       fontsize=9, color="white", weight='bold')
+        
+        # Línea de referencia en 0 y rejilla suave
+        ax.axhline(0, color="#9e9e9e", linewidth=1, linestyle="--")
+        ax.grid(axis="y", linestyle=":", linewidth=0.6, alpha=0.6)
+        ax.legend(loc="upper right", fontsize=8)
+        
+        self.canvas_consumo2.draw_idle()
+        
+        print(f"[ForwardView] Gráfica dual consumo actualizada: LCA=${lca_total:,.0f}, LLL=${lll_total:,.0f}, Consumo=${consumo:,.0f}")
     
     def update_chart(self, data: Dict[str, Any]) -> None:
         """
