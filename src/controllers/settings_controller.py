@@ -27,6 +27,7 @@ class SettingsController:
         """
         self._view = view
         self._model = model
+        self._recalc_in_progress = False  # Flag para evitar bucles infinitos
         
         print("[SettingsController] Inicializando...")
         
@@ -95,65 +96,110 @@ class SettingsController:
         # Parámetros Normativos son fijos (no requieren conexiones)
         
         # Conectar señales del modelo para recalcular tabla cuando cambie TRM COP/EUR
-        self._model.trm_cop_eurChanged.connect(self._update_lineas_credito_with_trm)
+        self._model.trm_cop_eurChanged.connect(self._recalc_lineas_credito_with_trm)
+        
+        # Conectar señal de cambio en líneas de crédito para recalcular al cargar CSV
+        self._model.lineasCreditoChanged.connect(self._on_lineas_credito_loaded)
         
         print("   ✓ trm_cop_usd.textChanged → model.set_trm_cop_usd()")
         print("   ✓ trm_cop_eur.textChanged → model.set_trm_cop_eur()")
         print("   ✓ Parámetros normativos: valores fijos (sin conexiones)")
-        print("   ✓ trm_cop_eurChanged → _update_lineas_credito_with_trm()")
+        print("   ✓ trm_cop_eurChanged → _recalc_lineas_credito_with_trm()")
+        print("   ✓ lineasCreditoChanged → _on_lineas_credito_loaded()")
     
-    def _update_lineas_credito_with_trm(self, trm_cop_eur) -> None:
+    def _recalc_lineas_credito_with_trm(self, trm_cop_eur) -> None:
         """
-        Recalcula las columnas dependientes de TRM COP/EUR en la tabla de líneas de crédito.
+        Recalcula las columnas derivadas en la tabla de líneas de crédito con la TRM COP/EUR.
+        
+        Fórmulas aplicadas:
+        - COP (MM) = EUR (MM) × TRM (COP/EUR)
+        - LLL 25% (EUR) = LLL 25% (COP) ÷ TRM (COP/EUR)
         
         Args:
-            trm_cop_eur: Nuevo valor de TRM COP/EUR (float o None)
+            trm_cop_eur: Valor de TRM COP/EUR (float o None)
         """
-        if not self._view or not self._model:
+        import pandas as pd
+        
+        # Evitar bucles infinitos
+        if self._recalc_in_progress:
             return
         
+        if not self._model:
+            return
+        
+        df = self._model.lineas_credito_df
+        
         # Solo recalcular si hay datos cargados
-        if self._view.df_lineas_credito is None or self._view.df_lineas_credito.empty:
+        if df is None or df.empty:
             print("[SettingsController] No hay líneas de crédito cargadas, no se recalcula")
             return
         
-        print(f"[SettingsController] Recalculando columnas con TRM COP/EUR actualizado...")
+        # Marcar que estamos recalculando para evitar bucles
+        self._recalc_in_progress = True
         
-        df = self._view.df_lineas_credito.copy()
+        print(f"[SettingsController] Recalculando columnas derivadas con TRM COP/EUR...")
         
-        if not trm_cop_eur or trm_cop_eur <= 0:
-            # Si no hay TRM, limpiar columnas calculadas
-            if "LLL 25% (EUR)" in df.columns:
-                df["LLL 25% (EUR)"] = None
-            print(f"   ⚠️  TRM COP/EUR no disponible, columnas calculadas limpiadas")
-        else:
-            # Helper local para limpiar series numéricas
-            import pandas as pd
-            def _to_mm(series: pd.Series) -> pd.Series:
-                return (series.astype(str).str.strip()
-                        .str.replace(r"[^\d,.\-]", "", regex=True)
-                        .str.replace(",", "", regex=False)
-                        .str.replace(" ", "", regex=False)
-                        .pipe(pd.to_numeric, errors="coerce").fillna(0))
-            
-            # Recalcular LLL 25% (EUR) = LLL 25% (COP) / TRM COP/EUR
-            if "LLL 25% (COP)" in df.columns:
-                df["LLL 25% (EUR)"] = _to_mm(df["LLL 25% (COP)"]) / float(trm_cop_eur)
-                print(f"   ✓ LLL 25% (EUR) recalculado con TRM COP/EUR = {trm_cop_eur:,.6f}")
-            
-            # Recalcular COP (MM) = EUR (MM) × TRM COP/EUR
-            if "EUR (MM)" in df.columns:
-                df["COP (MM)"] = _to_mm(df["EUR (MM)"]) * float(trm_cop_eur)
-                print(f"   ✓ COP (MM) recalculado con TRM COP/EUR = {trm_cop_eur:,.6f}")
+        df = df.copy()
         
-        # Actualizar el DataFrame en la vista y en el modelo
-        self._view.df_lineas_credito = df
+        # Helper para normalizar series numéricas a MM
+        def _to_mm(series: pd.Series) -> pd.Series:
+            """Convierte strings a float en MILLONES (MM); limpia separadores/espacios."""
+            return (series.astype(str).str.strip()
+                    .str.replace(r"[^\d,.\-]", "", regex=True)
+                    .str.replace(",", "", regex=False)
+                    .pipe(pd.to_numeric, errors="coerce"))
+        
+        # Validar TRM
+        if trm_cop_eur is None or pd.isna(trm_cop_eur) or trm_cop_eur == 0:
+            # Sin TRM: no recalcular derivados; preservar valores existentes
+            print(f"   ⚠️  TRM COP/EUR no disponible o inválida, se preservan valores existentes")
+            self._model.set_lineas_credito(df)
+            if self._view:
+                self._view.mostrar_lineas_credito(df)
+            self._recalc_in_progress = False
+            return
+        
+        # Asegurar que las columnas base existen
+        for col in ["EUR (MM)", "LLL 25% (COP)"]:
+            if col not in df.columns:
+                df[col] = pd.NA
+                print(f"   ⚠️  Columna '{col}' no encontrada, creada vacía")
+        
+        # Normalizar columnas base a números (MM)
+        df["EUR (MM)"] = _to_mm(df["EUR (MM)"]).fillna(0)
+        df["LLL 25% (COP)"] = _to_mm(df["LLL 25% (COP)"]).fillna(0)
+        
+        # Recalcular columnas derivadas
+        # 1) COP (MM) = EUR (MM) × TRM (COP/EUR)
+        df["COP (MM)"] = df["EUR (MM)"] * float(trm_cop_eur)
+        print(f"   ✓ COP (MM) = EUR (MM) × {trm_cop_eur:,.6f}")
+        
+        # 2) LLL 25% (EUR) = LLL 25% (COP) ÷ TRM (COP/EUR)
+        df["LLL 25% (EUR)"] = df["LLL 25% (COP)"] / float(trm_cop_eur)
+        print(f"   ✓ LLL 25% (EUR) = LLL 25% (COP) ÷ {trm_cop_eur:,.6f}")
+        
+        # Actualizar modelo y vista
         self._model.set_lineas_credito(df)
         
-        # Actualizar la tabla en la UI
-        self._view.mostrar_lineas_credito(df)
+        if self._view:
+            self._view.mostrar_lineas_credito(df)
         
-        print(f"   ✅ Tabla actualizada con nuevos valores de TRM COP/EUR")
+        print(f"   ✅ Tabla actualizada con columnas derivadas recalculadas")
+        
+        # Liberar flag
+        self._recalc_in_progress = False
+    
+    def _on_lineas_credito_loaded(self) -> None:
+        """
+        Callback que se ejecuta cuando se cargan/actualizan las líneas de crédito.
+        Invoca el recálculo con la TRM COP/EUR actual.
+        """
+        if not self._model:
+            return
+        
+        trm = self._model.trm_cop_eur()
+        print(f"[SettingsController] Líneas de crédito cargadas, aplicando recálculo con TRM={trm}")
+        self._recalc_lineas_credito_with_trm(trm)
     
     def handle_setting_change(self, key: str, value: Any) -> None:
         """

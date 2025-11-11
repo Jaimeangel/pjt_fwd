@@ -370,29 +370,9 @@ class SettingsView(QWidget):
                 df["COP (MM)"] = _to_mm(df["COP (MM)"])
                 print(f"   ✓ COP (MM) limpiado (MM)")
             
-            # 🔹 Calcular columnas dinámicas basadas en TRM COP/EUR
-            if self._settings_model:
-                trm_cop_eur = self._settings_model.trm_cop_eur()
-                
-                # Calcular LLL 25% (EUR) solo si tenemos TRM COP/EUR
-                if "LLL 25% (COP)" in df.columns:
-                    if trm_cop_eur and trm_cop_eur > 0:
-                        df["LLL 25% (EUR)"] = df["LLL 25% (COP)"] / float(trm_cop_eur)
-                        print(f"   ✓ LLL 25% (EUR) calculado usando TRM COP/EUR = {trm_cop_eur:,.6f}")
-                    else:
-                        df["LLL 25% (EUR)"] = None
-                        print(f"   ⚠️  LLL 25% (EUR) no calculado (falta TRM COP/EUR)")
-                
-                # Calcular COP (MM) solo si tenemos TRM COP/EUR y EUR (MM)
-                if "EUR (MM)" in df.columns:
-                    if trm_cop_eur and trm_cop_eur > 0:
-                        df["COP (MM)"] = df["EUR (MM)"] * float(trm_cop_eur)
-                        print(f"   ✓ COP (MM) calculado usando TRM COP/EUR = {trm_cop_eur:,.6f}")
-                    else:
-                        # Si no hay TRM, mantener COP (MM) como está en el archivo
-                        print(f"   ⚠️  COP (MM) se mantiene como está en archivo (falta TRM COP/EUR)")
-            else:
-                print(f"   ⚠️  Modelo no disponible, columnas dinámicas no calculadas")
+            # 🔹 Nota: Las columnas derivadas (LLL 25% EUR, COP MM calculado) se recalcularán
+            # automáticamente en el controlador cuando se guarde el DF en el modelo.
+            # Ver: SettingsController._recalc_lineas_credito_with_trm()
             
             # 🔹 Limpiar filas sin NIT o Contraparte
             filas_antes = len(df)
@@ -402,17 +382,15 @@ class SettingsView(QWidget):
             if filas_antes > filas_despues:
                 print(f"   ⚠️  {filas_antes - filas_despues} filas eliminadas por NIT o Contraparte vacío")
             
-            # Guardar el DataFrame temporalmente en la vista
-            self.df_lineas_credito = df
-            print(f"   ✓ DataFrame guardado en memoria ({len(df)} filas)")
-            
-            # Guardar el DataFrame en el modelo compartido (si existe)
+            # Guardar el DataFrame en el modelo (única fuente de verdad)
             if self._settings_model:
+                # Al guardar en el modelo, se emite lineasCreditoChanged
+                # que dispara el recálculo automático en el controlador
                 self._settings_model.set_lineas_credito(df)
-                print(f"   ✓ DataFrame guardado en SettingsModel")
-            
-            # Mostrar los datos en la tabla
-            self.mostrar_lineas_credito(df)
+                print(f"   ✓ DataFrame guardado en SettingsModel ({len(df)} filas)")
+                print(f"   → Se aplicará recálculo automático con TRM COP/EUR vigente")
+            else:
+                print(f"   ⚠️  Modelo no disponible, no se puede guardar")
             
             # Mensaje de éxito
             QMessageBox.information(
