@@ -641,7 +641,7 @@ class ForwardController:
                 if self._settings_model.lineas_credito_df.empty:
                     print(f"   ⚠️  No hay líneas de crédito cargadas en SettingsModel")
                     if self._view:
-                        self._view.set_credit_params(linea="—", colchon="—", limite="—")
+                        self._view.set_credit_params(linea="—", limite="—")
                         self._view.notify("Cargue primero 'Líneas de crédito' en Configuraciones.", "warning")
                     return  # No continuar con operaciones si no hay líneas de crédito
                 
@@ -676,7 +676,6 @@ class ForwardController:
                         limite_display = f"$ {lll_cop_real:,.0f}" if lll_cop_real else "—"
                         self._view.set_credit_params(
                             linea=f"$ {linea_credito_cop_real:,.0f}",
-                            colchon="—",  # Ya no se usa colchón global
                             limite=limite_display
                         )
                         
@@ -696,7 +695,7 @@ class ForwardController:
                     # Cliente NO encontrado en líneas de crédito
                     print(f"   ⚠️  Cliente con NIT {nit_norm} no encontrado en líneas de crédito.")
                     if self._view:
-                        self._view.set_credit_params(linea="—", colchon="—", limite="—")
+                        self._view.set_credit_params(linea="—", limite="—")
                         
                         # Actualizar información básica con patrimonio "—" pero TRMs actuales
                         trm_cop_usd = self._settings_model.trm_cop_usd()
@@ -709,7 +708,7 @@ class ForwardController:
             else:
                 print(f"   ⚠️  SettingsModel no disponible, no se pueden cargar límites del cliente.")
                 if self._view:
-                    self._view.set_credit_params(linea="—", colchon="—", limite="—")
+                    self._view.set_credit_params(linea="—", limite="—")
                     self._view.update_info_basica("—", "—", "—")
             
             # Obtener exposición crediticia del cliente (outstanding)

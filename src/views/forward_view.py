@@ -67,7 +67,6 @@ class ForwardView(QWidget):
         self.cmbClientes = None
         
         self.lblLineaCredito = None
-        self.lblColchonInterno = None
         self.lblLimiteMax = None
         self.lblOutstanding = None
         self.lblOutstandingSim = None
@@ -354,8 +353,8 @@ class ForwardView(QWidget):
         font_value = QFont()
         font_value.setBold(True)
         
-        # Línea de crédito (columna 0)
-        lbl_linea_title = QLabel("Línea de crédito")
+        # Línea de crédito autorizada (columna 0)
+        lbl_linea_title = QLabel("Línea de crédito autorizada (LCA)")
         lbl_linea_title.setAlignment(Qt.AlignCenter)
         self.lblLineaCredito = QLabel("—")  # Sin valor por defecto
         self.lblLineaCredito.setObjectName("lblLineaCredito")
@@ -364,25 +363,15 @@ class ForwardView(QWidget):
         card_c_layout.addWidget(lbl_linea_title, 0, 0)
         card_c_layout.addWidget(self.lblLineaCredito, 1, 0)
         
-        # Colchón interno (columna 1)
-        lbl_colchon_title = QLabel("Colchón interno")
-        lbl_colchon_title.setAlignment(Qt.AlignCenter)
-        self.lblColchonInterno = QLabel("—")  # Sin valor por defecto
-        self.lblColchonInterno.setObjectName("lblColchonInterno")
-        self.lblColchonInterno.setFont(font_value)
-        self.lblColchonInterno.setAlignment(Qt.AlignCenter)
-        card_c_layout.addWidget(lbl_colchon_title, 0, 1)
-        card_c_layout.addWidget(self.lblColchonInterno, 1, 1)
-        
-        # Límite máximo (columna 2)
-        lbl_limite_title = QLabel("Límite máximo permitido")
+        # Límite máximo permitido (columna 1)
+        lbl_limite_title = QLabel("Límite máximo permitido (LLL)")
         lbl_limite_title.setAlignment(Qt.AlignCenter)
         self.lblLimiteMax = QLabel("—")  # Sin valor por defecto
         self.lblLimiteMax.setObjectName("lblLimiteMax")
         self.lblLimiteMax.setFont(font_value)
         self.lblLimiteMax.setAlignment(Qt.AlignCenter)
-        card_c_layout.addWidget(lbl_limite_title, 0, 2)
-        card_c_layout.addWidget(self.lblLimiteMax, 1, 2)
+        card_c_layout.addWidget(lbl_limite_title, 0, 1)
+        card_c_layout.addWidget(self.lblLimiteMax, 1, 1)
         
         card_c.setLayout(card_c_layout)
         card_c.setMaximumHeight(120)
@@ -862,21 +851,19 @@ class ForwardView(QWidget):
                 f"border: 1px solid #d1d9e0; border-radius: 4px; padding: 8px; }}"
             )
     
-    def set_credit_params(self, linea: str, colchon: str, limite: str) -> None:
+    def set_credit_params(self, linea: str, limite: str) -> None:
         """
-        Actualiza los parámetros de crédito del cliente (línea, colchón, límite).
+        Actualiza los parámetros de crédito del cliente (línea y límite).
         Acepta strings directos para máxima flexibilidad (ej. "—" o valores formateados).
         
         Args:
-            linea: Línea de crédito (texto formateado o "—")
-            colchon: Colchón de seguridad (texto formateado o "—")
-            limite: Límite máximo permitido (texto formateado o "—")
+            linea: Línea de crédito autorizada LCA (texto formateado o "—")
+            limite: Límite máximo permitido LLL (texto formateado o "—")
         """
-        print(f"[ForwardView] set_credit_params: linea={linea}, colchon={colchon}, limite={limite}")
+        print(f"[ForwardView] set_credit_params: linea={linea}, limite={limite}")
         
         # Asignar directamente los textos sin disparar eventos
         self.lblLineaCredito.setText(linea)
-        self.lblColchonInterno.setText(colchon)
         self.lblLimiteMax.setText(limite)
     
     def show_exposure(self, outstanding: float = None, total_con_simulacion: float = None,

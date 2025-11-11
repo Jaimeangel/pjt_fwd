@@ -51,8 +51,7 @@ class SettingsController:
         # Bloquear señales temporalmente
         self._view.trm_cop_usd.blockSignals(True)
         self._view.trm_cop_eur.blockSignals(True)
-        self._view.inpLimEndeud.blockSignals(True)
-        self._view.inpLimEntFin.blockSignals(True)
+        # inpLimEndeud no requiere bloqueo (es no editable)
         
         # Cargar valores SOLO si no son None
         trm_cop_usd = self._model.trm_cop_usd()
@@ -71,24 +70,12 @@ class SettingsController:
             self._view.trm_cop_eur.clear()
             print("   TRM COP/EUR: (no configurado)")
         
-        # Parámetros normativos (pueden o no tener defaults)
-        lim_end = self._model.lim_endeud()
-        if lim_end is not None:
-            self._view.inpLimEndeud.setValue(lim_end)
-        else:
-            self._view.inpLimEndeud.clear()
-        
-        lim_ent = self._model.lim_entfin()
-        if lim_ent is not None:
-            self._view.inpLimEntFin.setValue(lim_ent)
-        else:
-            self._view.inpLimEntFin.clear()
+        # Parámetros normativos son fijos (LLL=25%, Colchón=10%)
+        print("   Parámetros normativos: valores fijos (no editables)")
         
         # Desbloquear señales
         self._view.trm_cop_usd.blockSignals(False)
         self._view.trm_cop_eur.blockSignals(False)
-        self._view.inpLimEndeud.blockSignals(False)
-        self._view.inpLimEntFin.blockSignals(False)
     
     def _connect_signals(self) -> None:
         """
@@ -105,17 +92,14 @@ class SettingsController:
         self._view.trm_cop_usd.textChanged.connect(self._model.set_trm_cop_usd)
         self._view.trm_cop_eur.textChanged.connect(self._model.set_trm_cop_eur)
         
-        # Conectar cambios de Parámetros Normativos
-        self._view.inpLimEndeud.valueChanged.connect(self._model.set_lim_endeud)
-        self._view.inpLimEntFin.valueChanged.connect(self._model.set_lim_entfin)
+        # Parámetros Normativos son fijos (no requieren conexiones)
         
         # Conectar señales del modelo para recalcular tabla cuando cambie TRM COP/EUR
         self._model.trm_cop_eurChanged.connect(self._update_lineas_credito_with_trm)
         
         print("   ✓ trm_cop_usd.textChanged → model.set_trm_cop_usd()")
         print("   ✓ trm_cop_eur.textChanged → model.set_trm_cop_eur()")
-        print("   ✓ LimEndeud.valueChanged → model.set_lim_endeud()")
-        print("   ✓ LimEntFin.valueChanged → model.set_lim_entfin()")
+        print("   ✓ Parámetros normativos: valores fijos (sin conexiones)")
         print("   ✓ trm_cop_eurChanged → _update_lineas_credito_with_trm()")
     
     def _update_lineas_credito_with_trm(self, trm_cop_eur) -> None:

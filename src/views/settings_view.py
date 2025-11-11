@@ -127,21 +127,18 @@ class SettingsView(QWidget):
         layout = QFormLayout(group)
         layout.setSpacing(8)
         
-        # Límite máx. endeudamiento individual (%)
+        # Límite máximo de endeudamiento LLL (%) - Valor fijo 25%
         self.inpLimEndeud = QDoubleSpinBox()
         self.inpLimEndeud.setRange(0, 100)
-        self.inpLimEndeud.setValue(10)
+        self.inpLimEndeud.setValue(25.0)
         self.inpLimEndeud.setDecimals(1)
         self.inpLimEndeud.setSuffix(" %")
-        layout.addRow("Límite máx. endeudamiento individual (%):", self.inpLimEndeud)
+        self.inpLimEndeud.setEnabled(False)  # No editable
+        layout.addRow("Límite máximo de endeudamiento LLL (%):", self.inpLimEndeud)
         
-        # Límite máx. concentración entidades financieras (%)
-        self.inpLimEntFin = QDoubleSpinBox()
-        self.inpLimEntFin.setRange(0, 100)
-        self.inpLimEntFin.setValue(30)
-        self.inpLimEntFin.setDecimals(1)
-        self.inpLimEntFin.setSuffix(" %")
-        layout.addRow("Límite máx. concentración entidades financieras (%):", self.inpLimEntFin)
+        # Colchón de seguridad (%) - Valor fijo 10% (solo informativo)
+        self.lblColchonSeguridad = QLabel("10.0 %")
+        layout.addRow("Colchón de seguridad (%):", self.lblColchonSeguridad)
         
         return group
     
@@ -511,28 +508,15 @@ class SettingsView(QWidget):
         
         print(f"[SettingsView] Parametros generales cargados: Patrimonio={patrimonio_cop:,.2f} COP, TRM={trm}")
     
-    def load_parametros_normativos(self, lim_endeud: float, lim_entfin: float, colchon: float) -> None:
+    def load_parametros_normativos(self) -> None:
         """
-        Carga los parámetros normativos en la interfaz.
+        Los parámetros normativos ahora son fijos (no editables):
+        - Límite máximo de endeudamiento LLL: 25%
+        - Colchón de seguridad: 10%
         
-        Args:
-            lim_endeud: Límite máx. endeudamiento individual (%)
-            lim_entfin: Límite máx. concentración ent. financieras (%)
-            colchon: Colchón de seguridad (%)
+        Este método se mantiene por compatibilidad pero no hace nada.
         """
-        self.inpLimEndeud.blockSignals(True)
-        self.inpLimEntFin.blockSignals(True)
-        self.inpColchon.blockSignals(True)
-        
-        self.inpLimEndeud.setValue(lim_endeud)
-        self.inpLimEntFin.setValue(lim_entfin)
-        self.inpColchon.setValue(colchon)
-        
-        self.inpLimEndeud.blockSignals(False)
-        self.inpLimEntFin.blockSignals(False)
-        self.inpColchon.blockSignals(False)
-        
-        print(f"[SettingsView] Parametros normativos cargados")
+        print(f"[SettingsView] Parámetros normativos ya están fijos (LLL=25%, Colchón=10%)")
     
     def get_parametros_generales(self) -> Dict[str, float]:
         """
@@ -548,15 +532,14 @@ class SettingsView(QWidget):
     
     def get_parametros_normativos(self) -> Dict[str, float]:
         """
-        Obtiene los parámetros normativos actuales.
+        Obtiene los parámetros normativos actuales (valores fijos).
         
         Returns:
-            Diccionario con los 3 parámetros normativos
+            Diccionario con los parámetros normativos fijos
         """
         return {
-            "lim_endeud": self.inpLimEndeud.value(),
-            "lim_entfin": self.inpLimEntFin.value(),
-            "colchon": self.inpColchon.value()
+            "lll_percent": 25.0,  # Límite máximo de endeudamiento LLL (%)
+            "colchon_seguridad": 10.0  # Colchón de seguridad (%)
         }
     
     def set_lineas_credito_model(self, model) -> None:
