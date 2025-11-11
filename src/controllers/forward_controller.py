@@ -65,6 +65,9 @@ class ForwardController:
         
         # Conectar señales de la vista a métodos del controller
         self._connect_view_signals()
+        
+        # Conectar señales del SettingsModel para actualización automática de TRM
+        self._connect_settings_signals()
     
     def _connect_view_signals(self):
         """Conecta las señales de la vista a los métodos del controlador."""
@@ -115,6 +118,47 @@ class ForwardController:
                 lambda dias: self._data_model.get_ibr_for_days(dias)
             )
             print("[ForwardController] IBR resolver configurado en modelo de simulaciones")
+    
+    def _connect_settings_signals(self):
+        """Conecta señales del SettingsModel para actualización automática de TRM."""
+        if self._settings_model:
+            try:
+                self._settings_model.trm_cop_usdChanged.disconnect(self._refresh_info_basica)
+            except (TypeError, RuntimeError):
+                pass
+            try:
+                self._settings_model.trm_cop_eurChanged.disconnect(self._refresh_info_basica)
+            except (TypeError, RuntimeError):
+                pass
+            
+            # Conectar señales
+            self._settings_model.trm_cop_usdChanged.connect(self._refresh_info_basica)
+            self._settings_model.trm_cop_eurChanged.connect(self._refresh_info_basica)
+            print("[ForwardController] Señales de SettingsModel conectadas para actualización automática de TRM")
+    
+    def _refresh_info_basica(self, _=None):
+        """
+        Actualiza la información básica (TRMs) en la vista cuando cambian en Configuraciones.
+        El patrimonio se mantiene como está (corresponde al cliente actual).
+        """
+        if not self._view or not self._settings_model:
+            return
+        
+        # Obtener TRM actuales
+        trm_cop_usd = self._settings_model.trm_cop_usd()
+        trm_cop_eur = self._settings_model.trm_cop_eur()
+        
+        # Formatear
+        trm_usd_str = f"{trm_cop_usd:,.2f}" if trm_cop_usd else "—"
+        trm_eur_str = f"{trm_cop_eur:,.2f}" if trm_cop_eur else "—"
+        
+        # Mantener el patrimonio actual (solo actualizar TRMs)
+        patrimonio_actual = self._view.lblPatrimonio.text()
+        
+        # Actualizar vista
+        self._view.update_info_basica(patrimonio_actual, trm_usd_str, trm_eur_str)
+        
+        print(f"[ForwardController] Información básica actualizada: TRM COP/USD={trm_usd_str}, TRM COP/EUR={trm_eur_str}")
         
     
     def load_415(self, file_path: str) -> None:
@@ -615,10 +659,16 @@ class ForwardController:
                     lll_cop_mm = cliente_info.get('lll_cop_mm', None)
                     lll_cop_real = (float(lll_cop_mm) * 1_000_000_000.0) if lll_cop_mm else None
                     
+                    # Obtener Patrimonio técnico en millones y convertir a reales
+                    patrimonio_mm = cliente_info.get('patrimonio_tecnico_mm', None)
+                    patrimonio_real = (float(patrimonio_mm) * 1_000_000_000.0) if patrimonio_mm else None
+                    
                     print(f"   → Datos del cliente (desde SettingsModel):")
                     print(f"      Línea de crédito (COP real): $ {linea_credito_cop_real:,.0f}")
                     if lll_cop_real:
                         print(f"      LLL 25% (COP real): $ {lll_cop_real:,.0f}")
+                    if patrimonio_real:
+                        print(f"      Patrimonio técnico (COP real): $ {patrimonio_real:,.0f}")
                     
                     # 🔹 Actualizar vista con línea de crédito
                     # (colchón y límite ahora son informativos, no se calculan globalmente)
@@ -629,15 +679,38 @@ class ForwardController:
                             colchon="—",  # Ya no se usa colchón global
                             limite=limite_display
                         )
+                        
+                        # 🔹 Actualizar información básica (Patrimonio y TRMs)
+                        patrimonio_str = f"$ {patrimonio_real:,.0f}" if patrimonio_real else "—"
+                        
+                        # Obtener TRMs actuales
+                        trm_cop_usd = self._settings_model.trm_cop_usd()
+                        trm_cop_eur = self._settings_model.trm_cop_eur()
+                        
+                        trm_usd_str = f"{trm_cop_usd:,.2f}" if trm_cop_usd else "—"
+                        trm_eur_str = f"{trm_cop_eur:,.2f}" if trm_cop_eur else "—"
+                        
+                        self._view.update_info_basica(patrimonio_str, trm_usd_str, trm_eur_str)
+                        print(f"      Información básica actualizada: Patrimonio={patrimonio_str}, TRM COP/USD={trm_usd_str}, TRM COP/EUR={trm_eur_str}")
                 else:
                     # Cliente NO encontrado en líneas de crédito
                     print(f"   ⚠️  Cliente con NIT {nit_norm} no encontrado en líneas de crédito.")
                     if self._view:
                         self._view.set_credit_params(linea="—", colchon="—", limite="—")
+                        
+                        # Actualizar información básica con patrimonio "—" pero TRMs actuales
+                        trm_cop_usd = self._settings_model.trm_cop_usd()
+                        trm_cop_eur = self._settings_model.trm_cop_eur()
+                        
+                        trm_usd_str = f"{trm_cop_usd:,.2f}" if trm_cop_usd else "—"
+                        trm_eur_str = f"{trm_cop_eur:,.2f}" if trm_cop_eur else "—"
+                        
+                        self._view.update_info_basica("—", trm_usd_str, trm_eur_str)
             else:
                 print(f"   ⚠️  SettingsModel no disponible, no se pueden cargar límites del cliente.")
                 if self._view:
                     self._view.set_credit_params(linea="—", colchon="—", limite="—")
+                    self._view.update_info_basica("—", "—", "—")
             
             # Obtener exposición crediticia del cliente (outstanding)
             outstanding = 0.0

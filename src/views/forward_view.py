@@ -62,7 +62,8 @@ class ForwardView(QWidget):
         self.lblEstadoIBR = None
         
         self.lblPatrimonio = None
-        self.lblTRM = None
+        self.lblTRM_COP_USD = None
+        self.lblTRM_COP_EUR = None
         self.cmbClientes = None
         
         self.lblLineaCredito = None
@@ -281,24 +282,34 @@ class ForwardView(QWidget):
         font_value.setBold(True)
         
         # Patrimonio técnico (columna 0)
-        lbl_pat_title = QLabel("Patrimonio técnico vigente")
+        lbl_pat_title = QLabel("Patrimonio técnico vigente (COP)")
         lbl_pat_title.setAlignment(Qt.AlignCenter)
-        self.lblPatrimonio = QLabel("$ 0.00")
+        self.lblPatrimonio = QLabel("—")
         self.lblPatrimonio.setObjectName("lblPatrimonio")
         self.lblPatrimonio.setFont(font_value)
         self.lblPatrimonio.setAlignment(Qt.AlignCenter)
         card_a_layout.addWidget(lbl_pat_title, 0, 0)
         card_a_layout.addWidget(self.lblPatrimonio, 1, 0)
         
-        # TRM vigente (columna 1)
-        lbl_trm_title = QLabel("TRM vigente")
-        lbl_trm_title.setAlignment(Qt.AlignCenter)
-        self.lblTRM = QLabel("$ 0.00")
-        self.lblTRM.setObjectName("lblTRM")
-        self.lblTRM.setFont(font_value)
-        self.lblTRM.setAlignment(Qt.AlignCenter)
-        card_a_layout.addWidget(lbl_trm_title, 0, 1)
-        card_a_layout.addWidget(self.lblTRM, 1, 1)
+        # TRM COP/USD (columna 1)
+        lbl_trm_usd_title = QLabel("TRM Vigente (COP/USD)")
+        lbl_trm_usd_title.setAlignment(Qt.AlignCenter)
+        self.lblTRM_COP_USD = QLabel("—")
+        self.lblTRM_COP_USD.setObjectName("lblTRM_COP_USD")
+        self.lblTRM_COP_USD.setFont(font_value)
+        self.lblTRM_COP_USD.setAlignment(Qt.AlignCenter)
+        card_a_layout.addWidget(lbl_trm_usd_title, 0, 1)
+        card_a_layout.addWidget(self.lblTRM_COP_USD, 1, 1)
+        
+        # TRM COP/EUR (columna 2)
+        lbl_trm_eur_title = QLabel("TRM Vigente (COP/EUR)")
+        lbl_trm_eur_title.setAlignment(Qt.AlignCenter)
+        self.lblTRM_COP_EUR = QLabel("—")
+        self.lblTRM_COP_EUR.setObjectName("lblTRM_COP_EUR")
+        self.lblTRM_COP_EUR.setFont(font_value)
+        self.lblTRM_COP_EUR.setAlignment(Qt.AlignCenter)
+        card_a_layout.addWidget(lbl_trm_eur_title, 0, 2)
+        card_a_layout.addWidget(self.lblTRM_COP_EUR, 1, 2)
         
         card_a.setLayout(card_a_layout)
         card_a.setMaximumHeight(120)
@@ -749,6 +760,19 @@ class ForwardView(QWidget):
         self.cmbClientes.blockSignals(False)
         
         print(f"   ✓ Combo de clientes actualizado con {len(clientes)} opciones (sin selección)")
+    
+    def update_info_basica(self, patrimonio: str, trm_cop_usd: str, trm_cop_eur: str) -> None:
+        """
+        Actualiza los valores de información básica (Patrimonio técnico y TRMs).
+        
+        Args:
+            patrimonio: Patrimonio técnico formateado (ej: "1,500,000,000" o "—")
+            trm_cop_usd: TRM COP/USD formateado (ej: "4,500.50" o "—")
+            trm_cop_eur: TRM COP/EUR formateado (ej: "4,800.75" o "—")
+        """
+        self.lblPatrimonio.setText(patrimonio)
+        self.lblTRM_COP_USD.setText(trm_cop_usd)
+        self.lblTRM_COP_EUR.setText(trm_cop_eur)
     
     def show_basic_info(self, patrimonio: float, trm: float,
                         corte_415: Optional[date], estado_415: str) -> None:
