@@ -73,8 +73,8 @@ class ForwardView(QWidget):
         self.lblLimiteMax = None
         self.lblOutstanding = None
         self.lblOutstandingSim = None
-        self.lblDispLCA = None
-        self.lblDispLLL = None
+        self.lblLineaAprobadaDisp = None  # Línea de crédito aprobada (monto disponible)
+        self.lblLineaAprobadaPct = None   # Línea de crédito aprobada (%)
         
         self.chartContainer = None
         
@@ -362,8 +362,8 @@ class ForwardView(QWidget):
         font_value = QFont()
         font_value.setBold(True)
         
-        # Línea de crédito autorizada (columna 0)
-        lbl_linea_title = QLabel("Línea de crédito autorizada (LCA)")
+        # Línea de crédito aprobada (columna 0)
+        lbl_linea_title = QLabel("Línea de crédito aprobada")
         lbl_linea_title.setAlignment(Qt.AlignCenter)
         self.lblLineaCredito = QLabel("—")  # Sin valor por defecto
         self.lblLineaCredito.setObjectName("lblLineaCredito")
@@ -413,28 +413,28 @@ class ForwardView(QWidget):
         card_d_layout.addWidget(lbl_outsim_title, 0, 1)
         card_d_layout.addWidget(self.lblOutstandingSim, 1, 1)
         
-        # Fila 2: Disponibilidad LCA y Disponibilidad LLL
-        # Disponibilidad LCA (fila 2, columna 0)
-        lbl_disp_lca_title = QLabel("Disponibilidad de línea (LCA)")
-        lbl_disp_lca_title.setAlignment(Qt.AlignCenter)
-        self.lblDispLCA = QLabel("—")
-        self.lblDispLCA.setObjectName("lblDispLCA")
-        self.lblDispLCA.setFont(font_value)
-        self.lblDispLCA.setAlignment(Qt.AlignCenter)
-        self.lblDispLCA.setStyleSheet("QLabel { color: #2e7d32; font-weight: bold; }")
-        card_d_layout.addWidget(lbl_disp_lca_title, 2, 0)
-        card_d_layout.addWidget(self.lblDispLCA, 3, 0)
+        # Fila 2: Línea de crédito aprobada (monto) y (porcentaje)
+        # Línea de crédito aprobada (monto disponible) (fila 2, columna 0)
+        lbl_linea_aprobada_title = QLabel("Línea de crédito aprobada")
+        lbl_linea_aprobada_title.setAlignment(Qt.AlignCenter)
+        self.lblLineaAprobadaDisp = QLabel("—")
+        self.lblLineaAprobadaDisp.setObjectName("lblLineaAprobadaDisp")
+        self.lblLineaAprobadaDisp.setFont(font_value)
+        self.lblLineaAprobadaDisp.setAlignment(Qt.AlignCenter)
+        self.lblLineaAprobadaDisp.setStyleSheet("QLabel { color: #2e7d32; font-weight: bold; }")
+        card_d_layout.addWidget(lbl_linea_aprobada_title, 2, 0)
+        card_d_layout.addWidget(self.lblLineaAprobadaDisp, 3, 0)
         
-        # Disponibilidad LLL (fila 2, columna 1)
-        lbl_disp_lll_title = QLabel("Disponibilidad de línea (LLL)")
-        lbl_disp_lll_title.setAlignment(Qt.AlignCenter)
-        self.lblDispLLL = QLabel("—")
-        self.lblDispLLL.setObjectName("lblDispLLL")
-        self.lblDispLLL.setFont(font_value)
-        self.lblDispLLL.setAlignment(Qt.AlignCenter)
-        self.lblDispLLL.setStyleSheet("QLabel { color: #2e7d32; font-weight: bold; }")
-        card_d_layout.addWidget(lbl_disp_lll_title, 2, 1)
-        card_d_layout.addWidget(self.lblDispLLL, 3, 1)
+        # Línea de crédito aprobada (%) (fila 2, columna 1)
+        lbl_linea_aprobada_pct_title = QLabel("Línea de crédito aprobada (%)")
+        lbl_linea_aprobada_pct_title.setAlignment(Qt.AlignCenter)
+        self.lblLineaAprobadaPct = QLabel("—")
+        self.lblLineaAprobadaPct.setObjectName("lblLineaAprobadaPct")
+        self.lblLineaAprobadaPct.setFont(font_value)
+        self.lblLineaAprobadaPct.setAlignment(Qt.AlignCenter)
+        self.lblLineaAprobadaPct.setStyleSheet("QLabel { color: #2e7d32; font-weight: bold; }")
+        card_d_layout.addWidget(lbl_linea_aprobada_pct_title, 2, 1)
+        card_d_layout.addWidget(self.lblLineaAprobadaPct, 3, 1)
         
         card_d.setLayout(card_d_layout)
         card_d.setMaximumHeight(200)  # Aumentado para acomodar 2 filas de datos
@@ -885,27 +885,27 @@ class ForwardView(QWidget):
         self.lblLineaCredito.setText(linea)
         self.lblLimiteMax.setText(limite)
     
-    def update_exposure_block(self, outstanding: str, outstanding_sim: str, disp_lca: str, disp_lll: str) -> None:
+    def update_exposure_block(self, outstanding: str, outstanding_sim: str, linea_aprobada_disp: str, linea_aprobada_pct: str) -> None:
         """
         Actualiza todos los valores del bloque de Exposición.
         
         Args:
             outstanding: Outstanding formateado (ej: "$ 1,234,567" o "—")
             outstanding_sim: Outstanding + simulación formateado
-            disp_lca: Disponibilidad LCA formateada
-            disp_lll: Disponibilidad LLL formateada
+            linea_aprobada_disp: Línea de crédito aprobada disponible (monto en COP)
+            linea_aprobada_pct: Línea de crédito aprobada disponible (porcentaje)
         """
         print(f"[ForwardView] update_exposure_block: Outstanding={outstanding}, "
-              f"Outst+Sim={outstanding_sim}, DispLCA={disp_lca}, DispLLL={disp_lll}")
+              f"Outst+Sim={outstanding_sim}, Línea aprobada disp={linea_aprobada_disp}, Línea aprobada %={linea_aprobada_pct}")
         
         self.lblOutstanding.setText(outstanding)
         self.lblOutstandingSim.setText(outstanding_sim)
-        self.lblDispLCA.setText(disp_lca)
-        self.lblDispLLL.setText(disp_lll)
+        self.lblLineaAprobadaDisp.setText(linea_aprobada_disp)
+        self.lblLineaAprobadaPct.setText(linea_aprobada_pct)
         
         # Cambiar color de disponibilidades según el valor
-        self._update_disp_color(self.lblDispLCA, disp_lca)
-        self._update_disp_color(self.lblDispLLL, disp_lll)
+        self._update_disp_color(self.lblLineaAprobadaDisp, linea_aprobada_disp)
+        self._update_disp_color(self.lblLineaAprobadaPct, linea_aprobada_pct)
     
     def _update_disp_color(self, label, value_str: str) -> None:
         """
@@ -947,88 +947,52 @@ class ForwardView(QWidget):
               f"total={total_con_simulacion}, disponibilidad={disponibilidad}")
         print("   ⚠️  Usar update_exposure_block() en su lugar")
     
-    def update_consumo_dual_chart(self,
-                                  lca_total: float | None,
-                                  lll_total: float | None,
-                                  consumo: float | None) -> None:
+    def update_consumo_dual_chart(self, lca_total: float | None, lll_total: float | None = None, consumo: float | None = None) -> None:
         """
-        Actualiza la gráfica dual de consumo de línea (LCA / LLL).
+        Actualiza la gráfica de línea de crédito aprobada.
         
-        Muestra dos barras:
-        - Base (límite total) con transparencia
-        - Consumo verde (hasta el límite)
-        - Exceso rojo (si el consumo supera el límite)
+        Muestra una sola barra gris representando el total de la línea de crédito aprobada (LCA).
         
         Args:
-            lca_total: Línea de crédito autorizada total en COP
-            lll_total: Límite máximo permitido (LLL) total en COP
-            consumo: Exposición actual (Outstanding o Outstanding + simulación) en COP
+            lca_total: Línea de crédito aprobada total en COP
+            lll_total: [Ignorado] Mantenido por compatibilidad
+            consumo: [Ignorado] Mantenido por compatibilidad
         """
         if not self.ax_consumo2 or not self.canvas_consumo2:
             return
         
         ax = self.ax_consumo2
         ax.clear()
-        ax.set_title("Consumo de línea (LCA / LLL)", fontsize=11, weight='bold')
+        ax.set_title("Consumo de línea aprobada", fontsize=11, weight='bold')
         ax.set_ylabel("COP", fontsize=9)
-        ax.set_xticks([0, 1])
-        ax.set_xticklabels(["Línea Crd LCA", "Línea Crd LLL"])
-        ax.tick_params(axis='both', which='major', labelsize=9)
         
         # Si falta data, solo redibuja ejes
-        if lca_total is None or lll_total is None or consumo is None:
+        if lca_total is None:
             self.canvas_consumo2.draw_idle()
             return
         
-        # Totales (límites)
-        totals = [max(lca_total, 0), max(lll_total, 0)]
+        # Mostrar solo una barra gris para la línea aprobada total
+        lca_value = max(lca_total, 0)
         
-        # Colores base por barra (límite)
-        base_colors = ["#3f51b5", "#8e24aa"]   # LCA (azul), LLL (morado)
-        base_alpha = 0.25
+        ax.bar(
+            ["Línea de crédito aprobada"],
+            [lca_value],
+            color="gray",
+            width=0.5
+        )
         
-        # Dibuja las barras base (límite total)
-        ax.bar([0, 1], totals, color=base_colors, alpha=base_alpha, 
-               edgecolor="#455A64", linewidth=1.0, label="Límite", width=0.6)
-        
-        # Consumo: usar mismo valor para comparar contra ambos límites
-        consumos = [consumo, consumo]
-        
-        # Segmentos: verde = min(consumo, límite); rojo = exceso
-        verdes = [min(c, t) for c, t in zip(consumos, totals)]
-        excesos = [max(c - t, 0) for c, t in zip(consumos, totals)]
-        
-        # Apilar: primero verde, luego rojo si aplica
-        ax.bar([0, 1], verdes, color="#2e7d32", 
-               label="Consumo (Outstanding / Sim)", zorder=3, width=0.6)
-        ax.bar([0, 1], excesos, bottom=verdes, color="#c62828", 
-               label="Exceso", zorder=3, width=0.6)
-        
-        # Etiquetas con valores absolutos
-        for x, t, c, v, e in zip([0, 1], totals, consumos, verdes, excesos):
-            # Total límite (encima de la barra)
-            ax.text(x, t * 1.01, f"{t:,.0f}", ha="center", va="bottom", 
-                   fontsize=9, color="#263238", weight='bold')
-            
-            # Consumo hasta el límite (centro del tramo verde)
-            y_text = v/2 if e == 0 else v/2
-            if v > 0:
-                ax.text(x, y_text, f"{min(c, t):,.0f}", ha="center", va="center", 
-                       fontsize=9, color="white", weight='bold')
-            
-            # Exceso (centro del tramo rojo)
-            if e > 0:
-                ax.text(x, v + e/2, f"+{e:,.0f}", ha="center", va="center", 
-                       fontsize=9, color="white", weight='bold')
+        # Etiqueta con valor total
+        ax.text(0, lca_value * 1.02, f"$ {lca_value:,.0f}", 
+               ha="center", va="bottom", fontsize=10, color="#263238", weight='bold')
         
         # Línea de referencia en 0 y rejilla suave
         ax.axhline(0, color="#9e9e9e", linewidth=1, linestyle="--")
         ax.grid(axis="y", linestyle=":", linewidth=0.6, alpha=0.6)
-        ax.legend(loc="upper right", fontsize=8)
+        ax.tick_params(axis='both', which='major', labelsize=9)
         
         self.canvas_consumo2.draw_idle()
         
-        print(f"[ForwardView] Gráfica dual consumo actualizada: LCA=${lca_total:,.0f}, LLL=${lll_total:,.0f}, Consumo=${consumo:,.0f}")
+        print(f"[ForwardView] Gráfica de línea aprobada actualizada: LCA=$ {lca_total:,.0f}")
     
     def update_chart(self, data: Dict[str, Any]) -> None:
         """

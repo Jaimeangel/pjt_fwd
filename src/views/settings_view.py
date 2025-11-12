@@ -478,26 +478,12 @@ class SettingsView(QWidget):
                 
                 self.tblLineasCredito.setItem(i, j, QTableWidgetItem(texto))
         
-        # Ajustar columnas para distribución proporcional
+        # Ajustar columnas para distribución proporcional (todas del mismo tamaño)
         header = self.tblLineasCredito.horizontalHeader()
-        header.setStretchLastSection(True)
-        header.setSectionResizeMode(QHeaderView.Interactive)
+        header.setSectionResizeMode(QHeaderView.Stretch)  # Todas las columnas se distribuyen uniformemente
         
-        # Set column widths proporcionales (5 columnas: NIT, Contraparte, Grupo, EUR (MM), COP (MM))
         num_cols = len(columnas_a_mostrar)
-        if num_cols == 5:
-            header.resizeSection(0, 120)  # NIT
-            header.resizeSection(1, 250)  # Contraparte
-            header.resizeSection(2, 200)  # Grupo
-            header.resizeSection(3, 120)  # EUR (MM)
-            header.resizeSection(4, 120)  # COP (MM)
-        else:
-            # Distribución uniforme si tiene diferente número de columnas
-            total_width = self.tblLineasCredito.width()
-            for col_idx in range(num_cols):
-                header.resizeSection(col_idx, total_width // num_cols)
-        
-        print(f"   ✓ Tabla actualizada con {len(df)} filas y {num_cols} columnas")
+        print(f"   ✓ Tabla actualizada con {len(df)} filas y {num_cols} columnas (columnas con tamaño proporcional)")
     
     def load_parametros_generales(self, patrimonio_cop: float, trm: float) -> None:
         """

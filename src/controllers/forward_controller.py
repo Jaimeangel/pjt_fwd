@@ -181,8 +181,8 @@ class ForwardController:
         Actualiza el bloque de Exposición completo con los 4 valores:
         - Outstanding
         - Outstanding + simulación
-        - Disponibilidad LCA
-        - Disponibilidad LLL
+        - Línea de crédito aprobada (monto disponible en COP)
+        - Línea de crédito aprobada (porcentaje disponible)
         
         Se debe llamar cuando:
         - Se selecciona una contraparte
@@ -238,35 +238,43 @@ class ForwardController:
         if with_sim is None and outstanding is not None:
             with_sim = outstanding
         
-        # Calcular disponibilidades
-        # Disp = Línea - Outstanding con simulación
-        disp_lca = None
-        disp_lll = None
+        # Calcular línea de crédito aprobada disponible
+        # linea_aprobada_disp = LCA - (Outstanding + simulación)
+        linea_aprobada_disp = None
+        linea_aprobada_pct = None
         
         if LCA is not None and with_sim is not None:
-            disp_lca = LCA - with_sim
+            linea_aprobada_disp = LCA - with_sim
+            
+            # Calcular porcentaje de disponibilidad
+            if LCA > 0:
+                linea_aprobada_pct = (linea_aprobada_disp / LCA) * 100
         
-        if LLL is not None and with_sim is not None:
-            disp_lll = LLL - with_sim
+        # Formatear porcentaje
+        def _fmt_pct(v):
+            """Formatea un porcentaje o devuelve '—' si es None o negativo."""
+            if v is None:
+                return "—"
+            if v < 0:
+                return "—"  # No mostrar porcentajes negativos
+            return f"{v:.1f} %"
         
         # Actualizar vista (labels de texto)
         self._view.update_exposure_block(
             _fmt(outstanding),
             _fmt(with_sim),
-            _fmt(disp_lca),
-            _fmt(disp_lll)
+            _fmt(linea_aprobada_disp),
+            _fmt_pct(linea_aprobada_pct)
         )
         
-        # Actualizar gráfica dual de consumo de línea
-        # Consumo = Outstanding + simulación si existe, sino Outstanding
-        consumo = with_sim if with_sim is not None else outstanding
-        self._view.update_consumo_dual_chart(LCA, LLL, consumo)
+        # Actualizar gráfica de consumo de línea (solo barra gris para LCA)
+        self._view.update_consumo_dual_chart(LCA)
         
         print(f"[ForwardController] Bloque de exposición actualizado:")
         print(f"   Outstanding: {_fmt(outstanding)}")
         print(f"   Outstanding + Sim: {_fmt(with_sim)}")
-        print(f"   Disp LCA: {_fmt(disp_lca)}")
-        print(f"   Disp LLL: {_fmt(disp_lll)}")
+        print(f"   Línea aprobada disponible: {_fmt(linea_aprobada_disp)}")
+        print(f"   Línea aprobada disponible (%): {_fmt_pct(linea_aprobada_pct)}")
     
     def load_415(self, file_path: str) -> None:
         """
