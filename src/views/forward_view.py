@@ -373,7 +373,7 @@ class ForwardView(QWidget):
         card_c_layout.addWidget(self.lblLineaCredito, 1, 0)
         
         # Límite máximo permitido (columna 1)
-        lbl_limite_title = QLabel("Límite máximo permitido (LLL)")
+        lbl_limite_title = QLabel("Límite máximo permitido (LLL) (25%)")
         lbl_limite_title.setAlignment(Qt.AlignCenter)
         self.lblLimiteMax = QLabel("—")  # Sin valor por defecto
         self.lblLimiteMax.setObjectName("lblLimiteMax")

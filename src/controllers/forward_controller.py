@@ -120,7 +120,7 @@ class ForwardController:
             print("[ForwardController] IBR resolver configurado en modelo de simulaciones")
     
     def _connect_settings_signals(self):
-        """Conecta señales del SettingsModel para actualización automática de TRM y líneas de crédito."""
+        """Conecta señales del SettingsModel para actualización automática de TRM, patrimonio y líneas de crédito."""
         if self._settings_model:
             try:
                 self._settings_model.trm_cop_usdChanged.disconnect(self._refresh_info_basica)
@@ -131,6 +131,14 @@ class ForwardController:
             except (TypeError, RuntimeError):
                 pass
             try:
+                self._settings_model.patrimonioTecCopChanged.disconnect(self._refresh_info_basica)
+            except (TypeError, RuntimeError):
+                pass
+            try:
+                self._settings_model.colchonSeguridadChanged.disconnect(self.refresh_exposure_block)
+            except (TypeError, RuntimeError):
+                pass
+            try:
                 self._settings_model.lineasCreditoChanged.disconnect(self.refresh_exposure_block)
             except (TypeError, RuntimeError):
                 pass
@@ -138,16 +146,23 @@ class ForwardController:
             # Conectar señales
             self._settings_model.trm_cop_usdChanged.connect(self._refresh_info_basica)
             self._settings_model.trm_cop_eurChanged.connect(self._refresh_info_basica)
+            self._settings_model.patrimonioTecCopChanged.connect(self._refresh_info_basica)
+            self._settings_model.patrimonioTecCopChanged.connect(self.refresh_exposure_block)  # Actualizar LLL al cambiar patrimonio
+            self._settings_model.colchonSeguridadChanged.connect(self.refresh_exposure_block)  # Actualizar LLL al cambiar colchón
             self._settings_model.lineasCreditoChanged.connect(self.refresh_exposure_block)
-            print("[ForwardController] Señales de SettingsModel conectadas para actualización automática de TRM y líneas de crédito")
+            print("[ForwardController] Señales de SettingsModel conectadas para actualización automática de TRM, patrimonio, colchón y líneas de crédito")
     
     def _refresh_info_basica(self, _=None):
         """
-        Actualiza la información básica (TRMs) en la vista cuando cambian en Configuraciones.
-        El patrimonio se mantiene como está (corresponde al cliente actual).
+        Actualiza la información básica (Patrimonio técnico y TRMs) en la vista cuando cambian en Configuraciones.
+        Usa el valor global de Patrimonio técnico desde SettingsModel (no por contraparte).
         """
         if not self._view or not self._settings_model:
             return
+        
+        # Obtener Patrimonio técnico global (en COP reales)
+        patrimonio = self._settings_model.patrimonio_tec_cop()
+        patrimonio_str = f"{patrimonio:,.0f}" if isinstance(patrimonio, (int, float)) else "—"
         
         # Obtener TRM actuales
         trm_cop_usd = self._settings_model.trm_cop_usd()
@@ -157,13 +172,9 @@ class ForwardController:
         trm_usd_str = f"{trm_cop_usd:,.2f}" if trm_cop_usd else "—"
         trm_eur_str = f"{trm_cop_eur:,.2f}" if trm_cop_eur else "—"
         
-        # Mantener el patrimonio actual (solo actualizar TRMs)
-        patrimonio_actual = self._view.lblPatrimonio.text()
-        
         # Actualizar vista
-        self._view.update_info_basica(patrimonio_actual, trm_usd_str, trm_eur_str)
-        
-        print(f"[ForwardController] Información básica actualizada: TRM COP/USD={trm_usd_str}, TRM COP/EUR={trm_eur_str}")
+        self._view.update_info_basica(patrimonio_str, trm_usd_str, trm_eur_str)
+        print(f"[ForwardController] Información básica actualizada: Patrimonio={patrimonio_str}, TRM COP/USD={trm_usd_str}, TRM COP/EUR={trm_eur_str}")
     
     def refresh_exposure_block(self):
         """
@@ -192,9 +203,8 @@ class ForwardController:
         
         # Valores por defecto
         LCA = None
-        LLL = None
         
-        # Obtener LCA y LLL de la tabla de líneas de crédito
+        # Obtener LCA de la tabla de líneas de crédito
         if nit and df is not None and not df.empty:
             # Normalizar NIT (sin guiones, sin espacios)
             nit_norm = str(nit).replace("-", "").strip()
@@ -210,15 +220,15 @@ class ForwardController:
                             LCA = float(cop_mm) * 1_000_000_000.0
                     except (ValueError, TypeError):
                         pass
-                
-                if "LLL 25% (COP)" in row.columns:
-                    lll_mm = row["LLL 25% (COP)"].iloc[0]
-                    try:
-                        import pandas as pd
-                        if pd.notna(lll_mm):
-                            LLL = float(lll_mm) * 1_000_000_000.0
-                    except (ValueError, TypeError):
-                        pass
+        
+        # Obtener LLL GLOBAL (25% del Patrimonio técnico vigente con colchón de seguridad)
+        LLL = self._settings_model.lll_cop()
+        
+        # 🔹 Actualizar el límite máximo permitido (LLL) en "Parámetros de crédito"
+        # Esto se actualiza aquí para reflejar cambios en Patrimonio o Colchón automáticamente
+        if self._view:
+            limite_display = f"$ {LLL:,.0f}" if LLL else "—"
+            self._view.lblLimiteMax.setText(limite_display)
         
         # Obtener Outstanding y Outstanding + simulación
         outstanding = self._data_model.outstanding_cop()
@@ -752,61 +762,37 @@ class ForwardController:
                     linea_cop_mm = float(cliente_info.get('linea_cop_mm', 0.0))
                     linea_credito_cop_real = linea_cop_mm * 1_000_000_000.0
                     
-                    # Obtener límite LLL 25% (COP) en millones y convertir a reales
-                    lll_cop_mm = cliente_info.get('lll_cop_mm', None)
-                    lll_cop_real = (float(lll_cop_mm) * 1_000_000_000.0) if lll_cop_mm else None
-                    
-                    # Obtener Patrimonio técnico en millones y convertir a reales
-                    patrimonio_mm = cliente_info.get('patrimonio_tecnico_mm', None)
-                    patrimonio_real = (float(patrimonio_mm) * 1_000_000_000.0) if patrimonio_mm else None
-                    
                     print(f"   → Datos del cliente (desde SettingsModel):")
                     print(f"      Línea de crédito (COP real): $ {linea_credito_cop_real:,.0f}")
-                    if lll_cop_real:
-                        print(f"      LLL 25% (COP real): $ {lll_cop_real:,.0f}")
-                    if patrimonio_real:
-                        print(f"      Patrimonio técnico (COP real): $ {patrimonio_real:,.0f}")
                     
-                    # 🔹 Actualizar vista con línea de crédito
-                    # (colchón y límite ahora son informativos, no se calculan globalmente)
+                    # 🔹 Obtener LLL GLOBAL (25% del Patrimonio técnico vigente)
+                    lll_global = self._settings_model.lll_cop()
+                    if lll_global:
+                        print(f"      LLL global (25% PT): $ {lll_global:,.0f}")
+                    
+                    # 🔹 Actualizar vista con línea de crédito y LLL global
                     if self._view:
-                        limite_display = f"$ {lll_cop_real:,.0f}" if lll_cop_real else "—"
+                        limite_display = f"$ {lll_global:,.0f}" if lll_global else "—"
                         self._view.set_credit_params(
                             linea=f"$ {linea_credito_cop_real:,.0f}",
                             limite=limite_display
                         )
-                        
-                        # 🔹 Actualizar información básica (Patrimonio y TRMs)
-                        patrimonio_str = f"$ {patrimonio_real:,.0f}" if patrimonio_real else "—"
-                        
-                        # Obtener TRMs actuales
-                        trm_cop_usd = self._settings_model.trm_cop_usd()
-                        trm_cop_eur = self._settings_model.trm_cop_eur()
-                        
-                        trm_usd_str = f"{trm_cop_usd:,.2f}" if trm_cop_usd else "—"
-                        trm_eur_str = f"{trm_cop_eur:,.2f}" if trm_cop_eur else "—"
-                        
-                        self._view.update_info_basica(patrimonio_str, trm_usd_str, trm_eur_str)
-                        print(f"      Información básica actualizada: Patrimonio={patrimonio_str}, TRM COP/USD={trm_usd_str}, TRM COP/EUR={trm_eur_str}")
                 else:
                     # Cliente NO encontrado en líneas de crédito
                     print(f"   ⚠️  Cliente con NIT {nit_norm} no encontrado en líneas de crédito.")
+                    
+                    # 🔹 Obtener LLL GLOBAL (independiente de si se encontró el cliente)
+                    lll_global = self._settings_model.lll_cop()
+                    if lll_global:
+                        print(f"      LLL global (25% PT): $ {lll_global:,.0f}")
+                    
                     if self._view:
-                        self._view.set_credit_params(linea="—", limite="—")
-                        
-                        # Actualizar información básica con patrimonio "—" pero TRMs actuales
-                        trm_cop_usd = self._settings_model.trm_cop_usd()
-                        trm_cop_eur = self._settings_model.trm_cop_eur()
-                        
-                        trm_usd_str = f"{trm_cop_usd:,.2f}" if trm_cop_usd else "—"
-                        trm_eur_str = f"{trm_cop_eur:,.2f}" if trm_cop_eur else "—"
-                        
-                        self._view.update_info_basica("—", trm_usd_str, trm_eur_str)
+                        limite_display = f"$ {lll_global:,.0f}" if lll_global else "—"
+                        self._view.set_credit_params(linea="—", limite=limite_display)
             else:
                 print(f"   ⚠️  SettingsModel no disponible, no se pueden cargar límites del cliente.")
                 if self._view:
                     self._view.set_credit_params(linea="—", limite="—")
-                    self._view.update_info_basica("—", "—", "—")
             
             # Obtener exposición crediticia del cliente (outstanding)
             outstanding = 0.0
@@ -836,6 +822,9 @@ class ForwardController:
             
             # 🔹 Actualizar bloque de exposición completo (Outstanding, Disp LCA, Disp LLL)
             self.refresh_exposure_block()
+            
+            # 🔹 Actualizar información básica (Patrimonio técnico global y TRMs)
+            self._refresh_info_basica()
             
             # Emitir señal global
             if self._signals:

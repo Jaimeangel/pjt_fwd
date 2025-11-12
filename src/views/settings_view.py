@@ -114,6 +114,27 @@ class SettingsView(QWidget):
         self.trm_cop_eur.setMinimumWidth(200)
         layout.addRow("TRM Vigente del día (COP/EUR):", self.trm_cop_eur)
         
+        # Patrimonio técnico vigente (COP)
+        self.lePatrimonioTecCOP = QLineEdit()
+        self.lePatrimonioTecCOP.setPlaceholderText("Ingrese valor en COP (no en MM)")
+        validator_patrimonio = QDoubleValidator(0.0, 1e15, 2, self)
+        validator_patrimonio.setNotation(QDoubleValidator.StandardNotation)
+        self.lePatrimonioTecCOP.setValidator(validator_patrimonio)
+        self.lePatrimonioTecCOP.setAlignment(Qt.AlignLeft | Qt.AlignVCenter)
+        self.lePatrimonioTecCOP.setMinimumWidth(200)
+        self.lePatrimonioTecCOP.setStyleSheet("""
+            QLineEdit {
+                background: white;
+                border: 1px solid #C8C8C8;
+                border-radius: 4px;
+                padding: 4px 8px;
+            }
+            QLineEdit:focus {
+                border: 1px solid #6AA0FF;
+            }
+        """)
+        layout.addRow("Patrimonio técnico vigente (COP):", self.lePatrimonioTecCOP)
+        
         return group
     
     def _create_parametros_normativos(self) -> QGroupBox:
@@ -228,9 +249,10 @@ class SettingsView(QWidget):
         
         Reglas:
         - CSV delimitado por ';'
-        - Columnas requeridas: NIT, Contraparte, Grupo Conectado de Contrapartes, Monto (COP)
+        - Columnas requeridas: NIT, Contraparte, Grupo Conectado de Contrapartes, EUR (MM)
         - NIT: eliminar guiones "-"
-        - Monto (COP): está en miles de millones → multiplicar por 1_000_000_000
+        - EUR (MM): valor en millones (MM), se limpia y normaliza
+        - COP (MM): NO se lee del CSV, es un valor DERIVADO que se calcula con TRM COP/EUR
         - Soporta UTF-8, UTF-8 con BOM, y Latin-1
         - Normaliza nombres de columnas (elimina BOM, NBSP, espacios extras)
         - Reconoce variaciones en nombres de columnas (case-insensitive)
@@ -303,22 +325,15 @@ class SettingsView(QWidget):
                 "nit": "NIT",
                 "contraparte": "Contraparte",
                 "grupo conectado de contrapartes": "Grupo Conectado de Contrapartes",
-                "fecha pt última actualización": "Fecha PT última actualización",
-                "fecha pt ultima actualizacion": "Fecha PT última actualización",
-                "patrimonio técnico": "Patrimonio técnico",
-                "patrimonio tecnico": "Patrimonio técnico",
-                "lll 25% (cop)": "LLL 25% (COP)",
-                "lll 25% (eur)": "LLL 25% (EUR)",
                 "eur (mm)": "EUR (MM)",
-                "cop (mm)": "COP (MM)",
             }
             
             # Mapear columnas según alias (insensible a mayúsculas/minúsculas)
             df.rename(columns=lambda c: alias.get(c.lower(), c), inplace=True)
             print(f"   ✓ Columnas después de mapeo: {list(df.columns)}")
             
-            # Columnas esperadas (mínimas) - ya NO incluye "Monto (COP)"
-            columnas_esperadas = ["NIT", "Contraparte", "Grupo Conectado de Contrapartes", "COP (MM)"]
+            # Columnas esperadas (mínimas)
+            columnas_esperadas = ["NIT", "Contraparte", "Grupo Conectado de Contrapartes", "EUR (MM)"]
             
             # Validar columnas requeridas
             faltantes = [col for col in columnas_esperadas if col not in df.columns]
@@ -354,24 +369,17 @@ class SettingsView(QWidget):
                         .pipe(pd.to_numeric, errors="coerce").fillna(0))
             
             # 🔹 Procesar columnas numéricas (mantener en millones)
-            if "Patrimonio técnico" in df.columns:
-                df["Patrimonio técnico"] = _to_mm(df["Patrimonio técnico"])
-                print(f"   ✓ Patrimonio técnico limpiado (MM)")
-            
-            if "LLL 25% (COP)" in df.columns:
-                df["LLL 25% (COP)"] = _to_mm(df["LLL 25% (COP)"])
-                print(f"   ✓ LLL 25% (COP) limpiado (MM)")
-            
             if "EUR (MM)" in df.columns:
                 df["EUR (MM)"] = _to_mm(df["EUR (MM)"])
                 print(f"   ✓ EUR (MM) limpiado (MM)")
             
-            if "COP (MM)" in df.columns:
-                df["COP (MM)"] = _to_mm(df["COP (MM)"])
-                print(f"   ✓ COP (MM) limpiado (MM)")
+            # 🔹 Crear columna COP (MM) vacía (se calculará con TRM)
+            # COP (MM) es un valor DERIVADO, NO se lee del CSV
+            df["COP (MM)"] = pd.NA
+            print(f"   ✓ COP (MM) creada vacía (se calculará con TRM COP/EUR)")
             
-            # 🔹 Nota: Las columnas derivadas (LLL 25% EUR, COP MM calculado) se recalcularán
-            # automáticamente en el controlador cuando se guarde el DF en el modelo.
+            # 🔹 Nota: COP (MM) se calculará automáticamente en el controlador 
+            # cuando se guarde el DF en el modelo (usando TRM COP/EUR vigente).
             # Ver: SettingsController._recalc_lineas_credito_with_trm()
             
             # 🔹 Limpiar filas sin NIT o Contraparte
@@ -423,10 +431,9 @@ class SettingsView(QWidget):
         
         print(f"[SettingsView] Mostrando {len(df)} líneas de crédito en la tabla...")
         
-        # Determinar columnas a mostrar (orden sugerido según requerimientos)
+        # Determinar columnas a mostrar (solo las actualmente usadas)
         columnas_orden = ["NIT", "Contraparte", "Grupo Conectado de Contrapartes", 
-                         "Fecha PT última actualización", "Patrimonio técnico",
-                         "LLL 25% (COP)", "LLL 25% (EUR)", "EUR (MM)", "COP (MM)"]
+                         "EUR (MM)", "COP (MM)"]
         
         # Filtrar solo las que existen en el DataFrame
         columnas_a_mostrar = [col for col in columnas_orden if col in df.columns]
@@ -440,10 +447,6 @@ class SettingsView(QWidget):
         for col in columnas_a_mostrar:
             if col == "Grupo Conectado de Contrapartes":
                 headers_display.append("Grupo")
-            elif col == "Fecha PT última actualización":
-                headers_display.append("Fecha PT")
-            elif col == "Patrimonio técnico":
-                headers_display.append("Patrimonio Téc.")
             else:
                 headers_display.append(col)
         
@@ -459,18 +462,15 @@ class SettingsView(QWidget):
                 # Formatear según tipo de dato
                 if col == "NIT":
                     texto = str(valor)
-                elif col in ["Contraparte", "Grupo Conectado de Contrapartes", "Fecha PT última actualización"]:
+                elif col in ["Contraparte", "Grupo Conectado de Contrapartes"]:
                     texto = str(valor) if pd.notna(valor) else ""
-                elif col in ["Patrimonio técnico", "LLL 25% (COP)", "EUR (MM)", "COP (MM)"]:
+                elif col in ["EUR (MM)", "COP (MM)"]:
                     # Formatear valores en millones (MM)
                     if pd.notna(valor) and valor is not None:
-                        texto = f"{float(valor):,.2f} MM"
-                    else:
-                        texto = "—"
-                elif col in ["LLL 25% (EUR)"]:
-                    # Formatear valores en EUR (también en MM)
-                    if pd.notna(valor) and valor is not None:
-                        texto = f"{float(valor):,.2f} MM €"
+                        try:
+                            texto = f"{float(valor):,.3f}"
+                        except (ValueError, TypeError):
+                            texto = "—"
                     else:
                         texto = "—"
                 else:
@@ -483,17 +483,17 @@ class SettingsView(QWidget):
         header.setStretchLastSection(True)
         header.setSectionResizeMode(QHeaderView.Interactive)
         
-        # Set column widths proporcionales
-        total_width = self.tblLineasCredito.width()
+        # Set column widths proporcionales (5 columnas: NIT, Contraparte, Grupo, EUR (MM), COP (MM))
         num_cols = len(columnas_a_mostrar)
-        if num_cols <= 4:
-            # Solo columnas básicas: anchos fijos
+        if num_cols == 5:
             header.resizeSection(0, 120)  # NIT
-            header.resizeSection(1, 200)  # Contraparte
-            header.resizeSection(2, 150)  # Grupo
-            header.resizeSection(3, 150)  # Monto
+            header.resizeSection(1, 250)  # Contraparte
+            header.resizeSection(2, 200)  # Grupo
+            header.resizeSection(3, 120)  # EUR (MM)
+            header.resizeSection(4, 120)  # COP (MM)
         else:
-            # Con columnas adicionales: distribución más uniforme
+            # Distribución uniforme si tiene diferente número de columnas
+            total_width = self.tblLineasCredito.width()
             for col_idx in range(num_cols):
                 header.resizeSection(col_idx, total_width // num_cols)
         

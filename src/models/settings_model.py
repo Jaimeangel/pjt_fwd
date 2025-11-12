@@ -25,6 +25,8 @@ class SettingsModel(QObject):
     # Señales para cambios en tiempo real (pueden emitir float o None)
     trm_cop_usdChanged = Signal(object)  # float | None
     trm_cop_eurChanged = Signal(object)  # float | None
+    patrimonioTecCopChanged = Signal(object)  # float | None
+    colchonSeguridadChanged = Signal(object)  # float | None
     lineasCreditoChanged = Signal()      # Aviso de cambios en DataFrame
     
     def __init__(self):
@@ -34,13 +36,15 @@ class SettingsModel(QObject):
         """
         super().__init__()
         
-        # Parámetros Generales (TRMs)
+        # Parámetros Generales (TRMs y Patrimonio)
         self._trm_cop_usd: Optional[float] = None  # TRM COP/USD
         self._trm_cop_eur: Optional[float] = None  # TRM COP/EUR
+        self._patrimonio_tec_cop: Optional[float] = None  # Patrimonio técnico en COP
         
         # Parámetros Normativos
         self._lim_endeud: Optional[float] = None
         self._lim_entfin: Optional[float] = None
+        self._colchon_seguridad: float = 0.10  # Colchón de seguridad (10% por defecto)
         
         # Líneas de Crédito Vigentes
         self.lineas_credito_df = pd.DataFrame()  # DataFrame con líneas de crédito cargadas
@@ -109,6 +113,63 @@ class SettingsModel(QObject):
         """
         return self._trm_cop_eur
     
+    def set_patrimonio_tec_cop(self, value) -> None:
+        """
+        Establece el Patrimonio técnico vigente en COP y emite señal si cambió.
+        Acepta None, float, o string. Valida que no sea NaN ni infinito.
+        
+        Args:
+            value: Nuevo valor de Patrimonio técnico en COP (float, str o None)
+        """
+        import math
+        
+        try:
+            val = float(value) if value not in (None, "") else None
+            if val is not None and (math.isnan(val) or math.isinf(val)):
+                val = None
+        except (TypeError, ValueError):
+            val = None
+        
+        if val != self._patrimonio_tec_cop:
+            self._patrimonio_tec_cop = val
+            self.patrimonioTecCopChanged.emit(val)
+            if val is not None:
+                print(f"[SettingsModel] Patrimonio técnico vigente actualizado: $ {val:,.2f} COP")
+            else:
+                print("[SettingsModel] Patrimonio técnico vigente limpiado (None)")
+    
+    def patrimonio_tec_cop(self) -> Optional[float]:
+        """
+        Obtiene el Patrimonio técnico vigente en COP.
+        
+        Returns:
+            Valor de Patrimonio técnico en COP o None si no está configurado
+        """
+        return self._patrimonio_tec_cop
+    
+    def lll_cop(self) -> Optional[float]:
+        """
+        Calcula el LLL (Límite de Liquidez Legal) global en COP.
+        LLL = 25% del Patrimonio técnico vigente × (1 - Colchón de seguridad).
+        
+        Ejemplo:
+        - PT = 8,000,000,000,000 COP
+        - Colchón = 10% (0.10)
+        - LLL = 8,000,000,000,000 × 0.25 × (1 - 0.10) = 1,800,000,000,000 COP
+        
+        Returns:
+            float: LLL en COP reales, o None si no hay patrimonio configurado
+        """
+        pt = self._patrimonio_tec_cop
+        if pt is None:
+            return None
+        try:
+            colchon = self._colchon_seguridad
+            # LLL = 25% del PT × (1 - colchón)
+            return 0.25 * float(pt) * (1 - colchon)
+        except (TypeError, ValueError):
+            return None
+    
     # === Parámetros Normativos ===
     
     def set_lim_endeud(self, v: float) -> None:
@@ -126,6 +187,22 @@ class SettingsModel(QObject):
     def lim_entfin(self) -> float:
         """Obtiene el límite máximo de concentración con entidades financieras (%)."""
         return self._lim_entfin
+    
+    def set_colchon_seguridad(self, v: float) -> None:
+        """
+        Establece el colchón de seguridad (%).
+        
+        Args:
+            v: Colchón de seguridad en porcentaje (ej: 0.10 para 10%)
+        """
+        if v != self._colchon_seguridad:
+            self._colchon_seguridad = v
+            self.colchonSeguridadChanged.emit(v)
+            print(f"[SettingsModel] Colchón de seguridad actualizado: {v * 100:.1f}%")
+    
+    def colchon_seguridad(self) -> float:
+        """Obtiene el colchón de seguridad (%)."""
+        return self._colchon_seguridad
     
     # === Líneas de Crédito ===
     
@@ -175,16 +252,10 @@ class SettingsModel(QObject):
             cop_mm = cliente_info["COP (MM)"].iloc[0]
             result["linea_cop_mm"] = float(cop_mm) if pd.notna(cop_mm) else 0.0
         
-        # Incluir columnas adicionales si existen
-        if "Patrimonio técnico" in cliente_info.columns:
-            result["patrimonio_tecnico_mm"] = float(cliente_info["Patrimonio técnico"].iloc[0])
-        if "LLL 25% (COP)" in cliente_info.columns:
-            result["lll_cop_mm"] = float(cliente_info["LLL 25% (COP)"].iloc[0])
-        if "LLL 25% (EUR)" in cliente_info.columns:
-            lll_eur = cliente_info["LLL 25% (EUR)"].iloc[0]
-            result["lll_eur_mm"] = float(lll_eur) if pd.notna(lll_eur) else None
+        # EUR (MM) si existe
         if "EUR (MM)" in cliente_info.columns:
-            result["eur_mm"] = float(cliente_info["EUR (MM)"].iloc[0])
+            eur_mm = cliente_info["EUR (MM)"].iloc[0]
+            result["eur_mm"] = float(eur_mm) if pd.notna(eur_mm) else None
         
         return result
     
