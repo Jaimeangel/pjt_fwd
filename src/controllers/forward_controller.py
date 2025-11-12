@@ -110,6 +110,15 @@ class ForwardController:
             self._view.delete_simulations_requested.connect(self.delete_simulations)
             self._view.simulate_selected_requested.connect(self.simulate_selected_row)
             self._view.save_simulations_requested.connect(self.save_simulations)
+            
+            # Conectar checkbox de zoom en gráfica de consumo
+            if hasattr(self._view, 'cbZoomConsumo') and self._view.cbZoomConsumo:
+                try:
+                    self._view.cbZoomConsumo.toggled.disconnect(self.refresh_exposure_block)
+                except (TypeError, RuntimeError):
+                    pass
+                self._view.cbZoomConsumo.toggled.connect(self.refresh_exposure_block)
+            
             print("[ForwardController] Señales de vista conectadas (sin duplicados)")
         
         # Configurar el resolver de IBR en el modelo de simulaciones
@@ -273,10 +282,16 @@ class ForwardController:
         )
         
         # Actualizar gráfica de consumo de línea (LCA + consumo apilado)
+        # Obtener estado del checkbox de zoom
+        zoom = False
+        if hasattr(self._view, 'cbZoomConsumo') and self._view.cbZoomConsumo:
+            zoom = self._view.cbZoomConsumo.isChecked()
+        
         self._view.update_consumo_dual_chart(
             lca_total=LCA,
             outstanding=outstanding,
-            outstanding_with_sim=with_sim
+            outstanding_with_sim=with_sim,
+            zoom=zoom
         )
         
         print(f"[ForwardController] Bloque de exposición actualizado:")

@@ -8,7 +8,7 @@ from datetime import date
 from PySide6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QGridLayout,
     QPushButton, QLabel, QComboBox, QTableView,
-    QGroupBox, QFrame, QSplitter, QSizePolicy
+    QGroupBox, QFrame, QSplitter, QSizePolicy, QCheckBox
 )
 from PySide6.QtCore import Signal, Qt
 from PySide6.QtGui import QFont
@@ -83,6 +83,7 @@ class ForwardView(QWidget):
         self.fig_consumo2 = None
         self.ax_consumo2 = None
         self.canvas_consumo2 = None
+        self.cbZoomConsumo = None  # Checkbox para activar zoom en consumo
         
         self.btnAddSim = None
         self.btnDelSim = None
@@ -456,16 +457,27 @@ class ForwardView(QWidget):
         card_e = self._create_card("Consumo de línea")
         card_e_layout = QVBoxLayout()
         
-        # Crear figura de matplotlib (dual chart: LCA y LLL)
+        # Header con checkbox para zoom
+        header_layout = QHBoxLayout()
+        header_layout.setContentsMargins(0, 0, 0, 5)
+        
+        self.cbZoomConsumo = QCheckBox("Zoom consumo")
+        self.cbZoomConsumo.setChecked(False)
+        self.cbZoomConsumo.setToolTip("Activar para enfocar la vista en el consumo actual")
+        
+        header_layout.addStretch()
+        header_layout.addWidget(self.cbZoomConsumo)
+        
+        card_e_layout.addLayout(header_layout)
+        
+        # Crear figura de matplotlib (dual chart: LCA + Consumo)
         self.fig_consumo2 = Figure(figsize=(5.2, 2.6), tight_layout=True)
         self.ax_consumo2 = self.fig_consumo2.add_subplot(111)
         self.canvas_consumo2 = FigureCanvas(self.fig_consumo2)
         
         # Configuración inicial de ejes
-        self.ax_consumo2.set_title("Consumo de línea (LCA / LLL)", fontsize=11, weight='bold')
+        self.ax_consumo2.set_title("Consumo vs Línea aprobada", fontsize=11, weight='bold')
         self.ax_consumo2.set_ylabel("COP", fontsize=9)
-        self.ax_consumo2.set_xticks([0, 1])
-        self.ax_consumo2.set_xticklabels(["Línea Crd LCA", "Línea Crd LLL"])
         self.ax_consumo2.tick_params(axis='both', which='major', labelsize=9)
         
         # Añadir el canvas al layout
@@ -948,20 +960,19 @@ class ForwardView(QWidget):
               f"total={total_con_simulacion}, disponibilidad={disponibilidad}")
         print("   ⚠️  Usar update_exposure_block() en su lugar")
     
-    def update_consumo_dual_chart(self, lca_total: float | None, outstanding: float | None = None, outstanding_with_sim: float | None = None) -> None:
+    def update_consumo_dual_chart(self, lca_total: float | None, outstanding: float | None = None, outstanding_with_sim: float | None = None, zoom: bool = False) -> None:
         """
         Actualiza la gráfica de consumo vs línea de crédito aprobada.
         
-        Muestra dos barras:
-        1. Barra gris: Línea de crédito aprobada (LCA total)
-        2. Barra verde apilada: Consumo (Outstanding + Simulación)
-           - Verde oscuro: Outstanding actual
-           - Verde claro: Incremento por simulación (si existe)
+        Modos de visualización:
+        - Normal (zoom=False): Muestra dos barras (LCA gris + Consumo apilado verde)
+        - Zoom (zoom=True): Muestra solo consumo apilado + LCA como línea de referencia, eje Y ajustado al consumo
         
         Args:
             lca_total: Línea de crédito aprobada total en COP
             outstanding: Outstanding actual en COP
             outstanding_with_sim: Outstanding + simulación en COP
+            zoom: Si True, activa modo zoom enfocado en consumo
         """
         if not self.ax_consumo2 or not self.canvas_consumo2:
             return
@@ -983,21 +994,46 @@ class ForwardView(QWidget):
         # Incremento por simulación (si hay)
         sim_extra = max(out_sim - out_now, 0)
         
-        # === Barra 1: Línea de crédito aprobada ===
-        if lca > 0:
-            ax.bar(
-                ["Línea aprobada"], [lca],
-                color="#d0d0d0", edgecolor="#9e9e9e",
-                label="Línea aprobada",
-                width=0.5
-            )
+        if not zoom:
+            # ===== MODO NORMAL =====
+            # Barra 1: Línea de crédito aprobada
+            if lca > 0:
+                ax.bar(
+                    ["Línea aprobada"], [lca],
+                    color="#d0d0d0", edgecolor="#9e9e9e",
+                    label="Línea aprobada",
+                    width=0.5
+                )
+            
+            # Barra 2: Consumo (apilada)
+            tiene_consumo = (out_now > 0 or out_sim > 0)
+            
+            if tiene_consumo:
+                # Verde oscuro: Outstanding actual
+                if out_now > 0:
+                    ax.bar(
+                        ["Consumo"], [out_now],
+                        color="#2e7d32", edgecolor="#1b5e20",
+                        label="Outstanding",
+                        width=0.5
+                    )
+                
+                # Verde claro: Incremento por simulación
+                if sim_extra > 0:
+                    ax.bar(
+                        ["Consumo"], [sim_extra],
+                        bottom=[out_now],
+                        color="#81c784", edgecolor="#66bb6a",
+                        label="Simulación",
+                        width=0.5
+                    )
+            
+            # Limitar el eje Y con margen superior
+            ymax = max(lca, out_sim, out_now) * 1.10 if max(lca, out_sim, out_now) > 0 else 1
         
-        # === Barra 2: Consumo (apilada) ===
-        # Determinar si hay consumo para mostrar
-        tiene_consumo = (out_now > 0 or out_sim > 0)
-        
-        if tiene_consumo:
-            # Verde oscuro: Outstanding actual
+        else:
+            # ===== MODO ZOOM CONSUMO =====
+            # Solo mostrar barra de Consumo apilada
             if out_now > 0:
                 ax.bar(
                     ["Consumo"], [out_now],
@@ -1015,13 +1051,17 @@ class ForwardView(QWidget):
                     label="Simulación",
                     width=0.5
                 )
+            
+            # LCA como línea horizontal de referencia
+            if lca > 0:
+                ax.axhline(lca, linestyle="--", linewidth=1.2, color="#9e9e9e", label="Línea aprobada")
+            
+            # Limitar el eje Y enfocado en consumo (con margen superior del 15%)
+            ymax = max(out_sim, out_now) * 1.15 if max(out_sim, out_now) > 0 else 1
         
-        # === Ejes y formato ===
+        # === Ejes y formato (común para ambos modos) ===
         ax.ticklabel_format(style="plain", axis="y", useOffset=False)
         ax.yaxis.set_major_formatter(FuncFormatter(lambda x, pos: f"${x:,.0f}"))
-        
-        # Limitar el eje Y con margen superior
-        ymax = max(lca, out_sim, out_now) * 1.10 if max(lca, out_sim, out_now) > 0 else 1
         ax.set_ylim(0, ymax)
         
         # Rejilla horizontal ligera
@@ -1033,7 +1073,8 @@ class ForwardView(QWidget):
         
         self.canvas_consumo2.draw_idle()
         
-        print(f"[ForwardView] Gráfica actualizada: LCA=$ {lca:,.0f}, Outstanding=$ {out_now:,.0f}, Outstanding+Sim=$ {out_sim:,.0f}")
+        modo = "ZOOM" if zoom else "NORMAL"
+        print(f"[ForwardView] Gráfica actualizada ({modo}): LCA=$ {lca:,.0f}, Outstanding=$ {out_now:,.0f}, Outstanding+Sim=$ {out_sim:,.0f}")
     
     def update_chart(self, data: Dict[str, Any]) -> None:
         """
