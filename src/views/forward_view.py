@@ -74,8 +74,8 @@ class ForwardView(QWidget):
         self.lblLimiteMax = None
         self.lblOutstanding = None
         self.lblOutstandingSim = None
-        self.lblLineaAprobadaDisp = None  # Línea de crédito aprobada (monto disponible)
-        self.lblLineaAprobadaPct = None   # Línea de crédito aprobada (%)
+        self.lblLineaAprobadaDisp = None  # Línea de crédito aprobada disponible (monto)
+        self.lblLineaAprobadaPct = None   # Línea de crédito aprobada disponible (%)
         
         self.chartContainer = None
         
@@ -427,8 +427,8 @@ class ForwardView(QWidget):
         card_d_layout.addWidget(lbl_linea_aprobada_title, 2, 0)
         card_d_layout.addWidget(self.lblLineaAprobadaDisp, 3, 0)
         
-        # Línea de crédito aprobada (%) (fila 2, columna 1)
-        lbl_linea_aprobada_pct_title = QLabel("Línea de crédito aprobada (%)")
+        # Línea de crédito aprobada disponible (%) (fila 2, columna 1)
+        lbl_linea_aprobada_pct_title = QLabel("Línea de crédito aprobada disponible (%)")
         lbl_linea_aprobada_pct_title.setAlignment(Qt.AlignCenter)
         self.lblLineaAprobadaPct = QLabel("—")
         self.lblLineaAprobadaPct.setObjectName("lblLineaAprobadaPct")
@@ -762,7 +762,7 @@ class ForwardView(QWidget):
         Args:
             clientes: Lista de nombres de clientes
         """
-        print(f"[ForwardView] set_client_list: {len(clientes)} clientes")
+        print(f"[ForwardView] set_client_list: {len(clientes)} clientes (método legacy)")
         
         # Bloquear señales para evitar triggers automáticos
         self.cmbClientes.blockSignals(True)
@@ -781,6 +781,47 @@ class ForwardView(QWidget):
         self.cmbClientes.blockSignals(False)
         
         print(f"   ✓ Combo de clientes actualizado con {len(clientes)} opciones (sin selección)")
+    
+    def populate_counterparties(self, items: List[Dict[str, Any]]) -> None:
+        """
+        Puebla el combo de contrapartes desde el catálogo de Líneas de Crédito.
+        
+        Args:
+            items: Lista de diccionarios con estructura:
+                   [{nit, nombre, grupo, eur_mm, cop_mm}, ...]
+        
+        Notes:
+            - El texto visible es el nombre de la contraparte
+            - El userData es el NIT normalizado
+            - Fuente: Configuraciones → Líneas de Crédito Vigentes
+        """
+        print(f"[ForwardView] populate_counterparties: {len(items)} contrapartes desde Settings")
+        
+        # Bloquear señales para evitar triggers automáticos
+        self.cmbClientes.blockSignals(True)
+        
+        # Limpiar combo
+        self.cmbClientes.clear()
+        
+        # Agregar contrapartes ordenadas por nombre
+        for item in sorted(items, key=lambda x: x.get("nombre", "")):
+            nombre = item.get("nombre", "")
+            nit = item.get("nit", "")
+            # Texto visible = nombre, userData = NIT normalizado
+            self.cmbClientes.addItem(nombre, nit)
+        
+        # NO seleccionar automáticamente ninguna contraparte
+        self.cmbClientes.setCurrentIndex(-1)
+        self.cmbClientes.setPlaceholderText("Seleccione contraparte")
+        self.cmbClientes.setToolTip("Fuente: Líneas de crédito (Configuraciones)")
+        
+        # Habilitar/deshabilitar según haya contrapartes
+        self.cmbClientes.setEnabled(bool(items))
+        
+        # Desbloquear señales
+        self.cmbClientes.blockSignals(False)
+        
+        print(f"   ✓ Combo de contrapartes actualizado con {len(items)} opciones (sin selección)")
     
     def update_info_basica(self, patrimonio: str, trm_cop_usd: str, trm_cop_eur: str) -> None:
         """
@@ -1282,6 +1323,51 @@ class ForwardView(QWidget):
         selected_rows = sorted(set(index.row() for index in selected_indexes))
         
         return selected_rows
+    
+    def clear_simulations_table(self) -> None:
+        """
+        Limpia todas las filas de la tabla de simulaciones.
+        
+        Este método es útil cuando se cambia de contraparte y se requiere
+        resetear las simulaciones previas.
+        """
+        if self.tblSimulaciones and self.tblSimulaciones.model():
+            model = self.tblSimulaciones.model()
+            if hasattr(model, 'clear'):
+                model.clear()
+            
+            # Limpiar selección visual
+            self.tblSimulaciones.clearSelection()
+            
+            print(f"[ForwardView] Tabla de simulaciones limpiada")
+    
+    def set_simulate_button_enabled(self, enabled: bool) -> None:
+        """
+        Habilita o deshabilita el botón "Simular".
+        
+        Args:
+            enabled: True para habilitar, False para deshabilitar
+        """
+        if self.btnRun:
+            self.btnRun.setEnabled(enabled)
+            
+            status = "habilitado" if enabled else "deshabilitado"
+            print(f"[ForwardView] Botón 'Simular' {status}")
+    
+    def has_simulation_rows(self) -> bool:
+        """
+        Verifica si la tabla de simulaciones tiene filas.
+        
+        Returns:
+            True si hay al menos una fila, False en caso contrario
+        """
+        if not self.tblSimulaciones or not self.tblSimulaciones.model():
+            return False
+        
+        model = self.tblSimulaciones.model()
+        row_count = model.rowCount() if model else 0
+        
+        return row_count > 0
     
     def notify(self, message: str, level: str) -> None:
         """

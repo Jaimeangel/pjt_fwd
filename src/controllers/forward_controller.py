@@ -68,6 +68,12 @@ class ForwardController:
         
         # Conectar señales del SettingsModel para actualización automática de TRM
         self._connect_settings_signals()
+        
+        # Conectar señales del modelo de simulaciones para habilitar/deshabilitar botón
+        self._connect_simulations_model_signals()
+        
+        # Cargar catálogo inicial de contrapartes desde Settings
+        self._reload_counterparties_from_settings()
     
     def _connect_view_signals(self):
         """Conecta las señales de la vista a los métodos del controlador."""
@@ -119,6 +125,14 @@ class ForwardController:
                     pass
                 self._view.cbZoomConsumo.toggled.connect(self.refresh_exposure_block)
             
+            # Conectar combo de clientes por índice (no por texto)
+            if hasattr(self._view, 'cmbClientes') and self._view.cmbClientes:
+                try:
+                    self._view.cmbClientes.currentIndexChanged.disconnect(self._on_client_combo_changed)
+                except (TypeError, RuntimeError):
+                    pass
+                self._view.cmbClientes.currentIndexChanged.connect(self._on_client_combo_changed)
+            
             print("[ForwardController] Señales de vista conectadas (sin duplicados)")
         
         # Configurar el resolver de IBR en el modelo de simulaciones
@@ -159,7 +173,232 @@ class ForwardController:
             self._settings_model.patrimonioTecCopChanged.connect(self.refresh_exposure_block)  # Actualizar LLL al cambiar patrimonio
             self._settings_model.colchonSeguridadChanged.connect(self.refresh_exposure_block)  # Actualizar LLL al cambiar colchón
             self._settings_model.lineasCreditoChanged.connect(self.refresh_exposure_block)
-            print("[ForwardController] Señales de SettingsModel conectadas para actualización automática de TRM, patrimonio, colchón y líneas de crédito")
+            
+            # Conectar señal de cambios en catálogo de contrapartes
+            try:
+                self._settings_model.counterpartiesChanged.disconnect(self._reload_counterparties_from_settings)
+            except (TypeError, RuntimeError):
+                pass
+            self._settings_model.counterpartiesChanged.connect(self._reload_counterparties_from_settings)
+            
+            print("[ForwardController] Señales de SettingsModel conectadas para actualización automática de TRM, patrimonio, colchón, líneas de crédito y contrapartes")
+    
+    def _connect_simulations_model_signals(self):
+        """Conecta señales del modelo de simulaciones para habilitar/deshabilitar el botón 'Simular'."""
+        if self._simulations_table_model and self._view:
+            # Conectar rowsInserted para habilitar botón cuando se agreguen filas
+            try:
+                self._simulations_table_model.rowsInserted.disconnect(self._update_simulate_button_state)
+            except (TypeError, RuntimeError):
+                pass
+            
+            try:
+                self._simulations_table_model.rowsRemoved.disconnect(self._update_simulate_button_state)
+            except (TypeError, RuntimeError):
+                pass
+            
+            try:
+                self._simulations_table_model.modelReset.disconnect(self._update_simulate_button_state)
+            except (TypeError, RuntimeError):
+                pass
+            
+            # Conectar señales
+            self._simulations_table_model.rowsInserted.connect(self._update_simulate_button_state)
+            self._simulations_table_model.rowsRemoved.connect(self._update_simulate_button_state)
+            self._simulations_table_model.modelReset.connect(self._update_simulate_button_state)
+            
+            print("[ForwardController] Señales de SimulationsTableModel conectadas para actualizar estado del botón 'Simular'")
+    
+    def _update_simulate_button_state(self, *args):
+        """
+        Actualiza el estado del botón 'Simular' según si hay filas en la tabla de simulaciones.
+        
+        Este método se ejecuta automáticamente cuando:
+        - Se agregan filas (rowsInserted)
+        - Se eliminan filas (rowsRemoved)
+        - Se limpia la tabla (modelReset)
+        """
+        if self._view:
+            has_rows = self._view.has_simulation_rows()
+            self._view.set_simulate_button_enabled(has_rows)
+    
+    def _reload_counterparties_from_settings(self):
+        """
+        Recarga el combo de contrapartes desde el catálogo de Líneas de Crédito (Settings).
+        
+        Este método se ejecuta automáticamente cuando:
+        - Se carga/actualiza el CSV de Líneas de Crédito en Configuraciones
+        - Cambia el catálogo de contrapartes
+        """
+        if not self._view or not self._settings_model:
+            return
+        
+        catalog = self._settings_model.get_counterparties()
+        self._view.populate_counterparties(catalog)
+        
+        # Si no hay catálogo, mostrar advertencia
+        if not catalog:
+            print("[ForwardController] ⚠️ No hay líneas de crédito cargadas")
+            from PySide6.QtWidgets import QMessageBox
+            QMessageBox.information(
+                self._view,
+                "Falta configuración",
+                "Cargue Líneas de crédito en Configuraciones para seleccionar contrapartes."
+            )
+        else:
+            print(f"[ForwardController] Combo de contrapartes actualizado: {len(catalog)} opciones")
+    
+    def _on_client_combo_changed(self, idx: int):
+        """
+        Manejador cuando cambia la selección del combo de contrapartes.
+        
+        Args:
+            idx: Índice de la selección en el combo
+        """
+        if idx < 0:
+            # No hay selección válida
+            self._show_empty_exposure()
+            return
+        
+        # Obtener NIT desde itemData
+        nit = self._view.cmbClientes.itemData(idx) if self._view else None
+        
+        if not nit:
+            print("[ForwardController] ⚠️ No se pudo obtener NIT de la selección")
+            self._show_empty_exposure()
+            return
+        
+        nombre = self._view.cmbClientes.itemText(idx) if self._view else ""
+        
+        print(f"[ForwardController] Contraparte seleccionada: {nombre} (NIT: {nit})")
+        
+        # 1) Limpiar simulaciones previas
+        print("   → Limpiando simulaciones previas...")
+        if self._view:
+            self._view.clear_simulations_table()
+            self._view.set_simulate_button_enabled(False)
+        
+        if self._data_model:
+            self._data_model.reset_simulation_state()
+        
+        # 2) Obtener LCA desde Settings por NIT (MM → COP reales ×1e6)
+        lca_real = None
+        if self._settings_model:
+            catalog = {c["nit"]: c for c in self._settings_model.get_counterparties()}
+            cinfo = catalog.get(nit)
+            if cinfo and cinfo.get("cop_mm") is not None:
+                try:
+                    lca_real = float(cinfo["cop_mm"]) * 1_000_000.0
+                    print(f"   → LCA desde Settings: {cinfo.get('cop_mm'):,.3f} MM → $ {lca_real:,.0f} COP")
+                except (ValueError, TypeError):
+                    pass
+        
+        # 3) Buscar datos en 415 por NIT normalizado
+        outstanding = 0.0
+        ops_list = []
+        
+        if self._data_model:
+            outstanding = self._data_model.get_outstanding_por_nit(nit)
+            ops_list = self._data_model.get_operaciones_por_nit(nit)
+            
+            if outstanding > 0:
+                print(f"   → Outstanding desde 415: $ {outstanding:,.0f} COP")
+            else:
+                print(f"   → Sin Outstanding en 415 para este NIT")
+            
+            if ops_list:
+                print(f"   → {len(ops_list)} operaciones vigentes desde 415")
+            else:
+                print(f"   → Sin operaciones vigentes en 415")
+            
+            # Actualizar modelo
+            self._data_model.set_outstanding_cop(outstanding)
+            self._data_model.set_outstanding_with_sim_cop(None)  # Sin simulación inicial
+            self._data_model.set_current_client(nit, nombre)
+        
+        # 4) Actualizar tabla de operaciones
+        if self._view and self._operations_table_model:
+            self._operations_table_model.set_operations(ops_list)
+            self._view.set_operations_table(self._operations_table_model)
+        
+        # 5) Actualizar parámetros de crédito (LCA y LLL)
+        if self._view and self._settings_model:
+            # LCA
+            linea_display = f"$ {lca_real:,.0f}" if lca_real else "—"
+            
+            # LLL global (25% del Patrimonio técnico vigente con colchón)
+            lll_global = self._settings_model.lll_cop()
+            limite_display = f"$ {lll_global:,.0f}" if lll_global else "—"
+            
+            self._view.set_credit_params(linea=linea_display, limite=limite_display)
+        
+        # 6) Recalcular exposición sin simulación
+        self._refresh_exposure(lca_real, outstanding, outstanding)
+        
+        # 7) Actualizar información básica
+        self._refresh_info_basica()
+    
+    def _show_empty_exposure(self):
+        """
+        Muestra estado vacío cuando no hay contraparte seleccionada o no hay datos.
+        """
+        if self._view:
+            self._view.update_exposure_block("$ 0", "$ 0", "—", "—")
+            
+            zoom = False
+            if hasattr(self._view, 'cbZoomConsumo') and self._view.cbZoomConsumo:
+                zoom = self._view.cbZoomConsumo.isChecked()
+            
+            self._view.update_consumo_dual_chart(0.0, 0.0, 0.0, zoom=zoom)
+            
+            if self._operations_table_model:
+                self._operations_table_model.set_operations([])
+    
+    def _refresh_exposure(self, lca_real: float | None, outstanding: float, outstanding_with_sim: float):
+        """
+        Actualiza el bloque de exposición y la gráfica.
+        
+        Args:
+            lca_real: Línea de crédito aprobada en COP reales
+            outstanding: Outstanding actual en COP
+            outstanding_with_sim: Outstanding + simulación en COP
+        """
+        # Calcular disponibilidades
+        disp_lca = None
+        pct_lca = None
+        
+        if lca_real is not None and outstanding_with_sim is not None:
+            disp_lca = lca_real - outstanding_with_sim
+            if lca_real > 0:
+                pct_lca = max((disp_lca / lca_real) * 100.0, 0.0)
+        
+        # Formatear valores
+        def fmt_cop(v):
+            return f"$ {v:,.0f}" if v is not None else "—"
+        
+        def fmt_pct(v):
+            return f"{v:.1f} %" if v is not None else "—"
+        
+        # Actualizar vista
+        if self._view:
+            self._view.update_exposure_block(
+                fmt_cop(outstanding),
+                fmt_cop(outstanding_with_sim),
+                fmt_cop(disp_lca) if disp_lca is not None else "—",
+                fmt_pct(pct_lca) if pct_lca is not None else "—"
+            )
+            
+            # Actualizar gráfica
+            zoom = False
+            if hasattr(self._view, 'cbZoomConsumo') and self._view.cbZoomConsumo:
+                zoom = self._view.cbZoomConsumo.isChecked()
+            
+            self._view.update_consumo_dual_chart(
+                lca_total=lca_real or 0.0,
+                outstanding=outstanding or 0.0,
+                outstanding_with_sim=outstanding_with_sim or outstanding or 0.0,
+                zoom=zoom
+            )
     
     def _refresh_info_basica(self, _=None):
         """
@@ -215,9 +454,15 @@ class ForwardController:
         
         # Obtener LCA de la tabla de líneas de crédito
         if nit and df is not None and not df.empty:
-            # Normalizar NIT (sin guiones, sin espacios)
-            nit_norm = str(nit).replace("-", "").strip()
-            row = df[df["NIT"].astype(str).str.replace("-", "").str.strip() == nit_norm]
+            # Normalizar NIT usando la utilidad
+            from src.utils.ids import normalize_nit
+            nit_norm = normalize_nit(nit)
+            
+            # Buscar por NIT_norm si existe, sino usar NIT normalizado en búsqueda
+            if "NIT_norm" in df.columns:
+                row = df[df["NIT_norm"] == nit_norm]
+            else:
+                row = df[df["NIT"].astype(str).apply(normalize_nit) == nit_norm]
             
             if not row.empty:
                 # Convertir de MM (millones) a COP reales (* 1,000,000)
@@ -743,6 +988,15 @@ class ForwardController:
         self._updating_client = True
         try:
             print(f"[ForwardController] select_client: {nombre_o_nit}")
+            
+            # 🔹 PASO 1: Limpiar simulaciones previas al cambiar de contraparte
+            print("   → Limpiando simulaciones previas...")
+            if self._view:
+                self._view.clear_simulations_table()
+                self._view.set_simulate_button_enabled(False)
+            
+            if self._data_model:
+                self._data_model.reset_simulation_state()
             
             # Intentar obtener NIT desde el nombre
             nit = None

@@ -645,3 +645,19 @@ class SimulationsTableModel(QAbstractTableModel):
             return self.HEADERS.index(column_name)
         except ValueError:
             return -1
+    
+    def clear(self) -> None:
+        """
+        Limpia todas las filas de la tabla de simulaciones.
+        
+        Este método elimina todas las simulaciones, útil cuando se cambia de contraparte
+        o se requiere resetear el estado de simulaciones.
+        """
+        if len(self._rows) == 0:
+            return
+        
+        self.beginResetModel()
+        self._rows = []
+        self.endResetModel()
+        
+        print(f"[SimulationsTableModel] Tabla de simulaciones limpiada")

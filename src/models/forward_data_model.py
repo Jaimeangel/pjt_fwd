@@ -4,6 +4,7 @@ Modelo de datos para operaciones Forward y archivo 415.
 
 from typing import Optional, Dict, Any, List
 from datetime import date
+from src.utils.ids import normalize_nit
 
 
 class ForwardDataModel:
@@ -76,33 +77,38 @@ class ForwardDataModel:
     def set_datos_415(self, operaciones: List[Dict[str, Any]], exp_por_nit: Dict[str, float]) -> None:
         """
         Guarda la información procesada del 415:
-        - Operaciones por NIT
-        - Exposición por NIT
+        - Operaciones por NIT (normalizado)
+        - Exposición por NIT (normalizado)
         - Mapeos NIT <-> nombre de contraparte
         
         Args:
             operaciones: Lista de operaciones procesadas con todas las columnas
             exp_por_nit: Diccionario con NIT -> exposición crediticia
         """
-        self.outstanding_por_cliente = exp_por_nit or {}
+        # Normalizar NITs en el diccionario de exposiciones
+        self.outstanding_por_cliente = {
+            normalize_nit(nit): exposicion 
+            for nit, exposicion in (exp_por_nit or {}).items()
+        }
         
-        # Agrupar operaciones por NIT y construir mapeos
+        # Agrupar operaciones por NIT normalizado y construir mapeos
         ops_por_nit: Dict[str, List[Dict[str, Any]]] = {}
         nit_to_nombre: Dict[str, str] = {}
         
         for op in operaciones:
             nit = str(op.get("nit", "")).strip()
+            nit_norm = normalize_nit(nit)  # Normalizar NIT
             nombre = str(op.get("contraparte", "")).strip()  # 14Nom_Cont
             
-            if not nit:
+            if not nit_norm:
                 continue
                 
-            # Agrupar operaciones por NIT
-            ops_por_nit.setdefault(nit, []).append(op)
+            # Agrupar operaciones por NIT normalizado
+            ops_por_nit.setdefault(nit_norm, []).append(op)
             
             # Guardar nombre de la contraparte
             if nombre:
-                nit_to_nombre[nit] = nombre
+                nit_to_nombre[nit_norm] = nombre
         
         # Construir mapeo inverso nombre -> NIT
         nombre_to_nit = {v: k for k, v in nit_to_nombre.items()}
@@ -404,6 +410,16 @@ class ForwardDataModel:
         self.ibr_tamano_kb = None
         self.ibr_timestamp = None
         self.ibr_estado = "—"
+    
+    def reset_simulation_state(self) -> None:
+        """
+        Resetea el estado de simulación.
+        
+        Este método limpia el valor de 'Outstanding + simulación', dejando
+        solo el Outstanding actual. Útil cuando se cambia de contraparte.
+        """
+        self._outstanding_with_sim_cop = None
+        print(f"[ForwardDataModel] Estado de simulación reseteado")
     
     # Métodos para exposición del cliente actual
     def outstanding_cop(self) -> Optional[float]:

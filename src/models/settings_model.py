@@ -4,8 +4,9 @@ Gestiona la configuración y parámetros de la aplicación con señales Qt para 
 """
 
 from PySide6.QtCore import QObject, Signal
-from typing import Optional, Dict, Any
+from typing import Optional, Dict, Any, List
 import pandas as pd
+from src.utils.ids import normalize_nit
 
 
 class SettingsModel(QObject):
@@ -28,6 +29,7 @@ class SettingsModel(QObject):
     patrimonioTecCopChanged = Signal(object)  # float | None
     colchonSeguridadChanged = Signal(object)  # float | None
     lineasCreditoChanged = Signal()      # Aviso de cambios en DataFrame
+    counterpartiesChanged = Signal()     # Aviso de cambios en catálogo de contrapartes
     
     def __init__(self):
         """
@@ -209,16 +211,18 @@ class SettingsModel(QObject):
     def set_lineas_credito(self, df: pd.DataFrame) -> None:
         """
         Establece el DataFrame de líneas de crédito vigentes.
-        Normaliza el NIT (elimina guiones) antes de almacenar.
+        Normaliza el NIT (elimina guiones, espacios, ceros a la izquierda) antes de almacenar.
         
         Args:
-            df: DataFrame con columnas NIT, Contraparte, Grupo, Patrimonio técnico, LLL 25% (COP), EUR (MM), COP (MM)
+            df: DataFrame con columnas NIT, Contraparte, Grupo, EUR (MM), COP (MM)
         """
-        # Normalizar NIT sin guiones
+        # Normalizar NIT usando la función de utilidades
         df = df.copy()
-        df["NIT"] = df["NIT"].astype(str).str.replace("-", "", regex=False).str.strip()
+        if "NIT" in df.columns:
+            df["NIT_norm"] = df["NIT"].map(normalize_nit)
         self.lineas_credito_df = df
         self.lineasCreditoChanged.emit()
+        self.counterpartiesChanged.emit()
         print(f"[SettingsModel] Líneas de crédito actualizadas: {len(df)} registros")
     
     def get_linea_credito_por_nit(self, nit: str) -> Optional[Dict[str, Any]]:
@@ -274,4 +278,48 @@ class SettingsModel(QObject):
             "lim_endeud": self._lim_endeud,
             "lim_entfin": self._lim_entfin
         }
+    
+    def get_counterparties(self) -> List[Dict[str, Any]]:
+        """
+        Devuelve el catálogo de contrapartes desde la tabla de Líneas de Crédito.
+        
+        Returns:
+            Lista de diccionarios con estructura:
+            [{nit, nombre, grupo, eur_mm, cop_mm}, ...]
+            
+        Notes:
+            - Devuelve lista vacía si no hay líneas de crédito cargadas
+            - Deduplicación por NIT normalizado (mantiene primer registro)
+            - NITs normalizados (sin espacios, guiones, ceros a la izquierda)
+        """
+        if self.lineas_credito_df is None or self.lineas_credito_df.empty:
+            return []
+        
+        df = self.lineas_credito_df
+        cols = df.columns
+        out = []
+        
+        for _, row in df.iterrows():
+            # Usar NIT_norm si existe, sino normalizar NIT original
+            nit_norm = row.get("NIT_norm") if "NIT_norm" in cols else normalize_nit(row.get("NIT", ""))
+            
+            out.append({
+                "nit": nit_norm,
+                "nombre": row.get("Contraparte", ""),
+                "grupo": row.get("Grupo Conectado de Contrapartes", ""),
+                "eur_mm": row.get("EUR (MM)") if "EUR (MM)" in cols else None,
+                "cop_mm": row.get("COP (MM)") if "COP (MM)" in cols else None,
+            })
+        
+        # Deduplicar por NIT (mantener primero)
+        seen = set()
+        dedup = []
+        for c in out:
+            if c["nit"] in seen:
+                continue
+            seen.add(c["nit"])
+            dedup.append(c)
+        
+        print(f"[SettingsModel] Catálogo de contrapartes: {len(dedup)} registros")
+        return dedup
 
