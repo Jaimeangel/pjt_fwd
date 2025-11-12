@@ -15,6 +15,7 @@ from PySide6.QtGui import QFont
 
 from matplotlib.backends.backend_qtagg import FigureCanvasQTAgg as FigureCanvas
 from matplotlib.figure import Figure
+from matplotlib.ticker import FuncFormatter
 
 
 class ForwardView(QWidget):
@@ -947,52 +948,92 @@ class ForwardView(QWidget):
               f"total={total_con_simulacion}, disponibilidad={disponibilidad}")
         print("   ⚠️  Usar update_exposure_block() en su lugar")
     
-    def update_consumo_dual_chart(self, lca_total: float | None, lll_total: float | None = None, consumo: float | None = None) -> None:
+    def update_consumo_dual_chart(self, lca_total: float | None, outstanding: float | None = None, outstanding_with_sim: float | None = None) -> None:
         """
-        Actualiza la gráfica de línea de crédito aprobada.
+        Actualiza la gráfica de consumo vs línea de crédito aprobada.
         
-        Muestra una sola barra gris representando el total de la línea de crédito aprobada (LCA).
+        Muestra dos barras:
+        1. Barra gris: Línea de crédito aprobada (LCA total)
+        2. Barra verde apilada: Consumo (Outstanding + Simulación)
+           - Verde oscuro: Outstanding actual
+           - Verde claro: Incremento por simulación (si existe)
         
         Args:
             lca_total: Línea de crédito aprobada total en COP
-            lll_total: [Ignorado] Mantenido por compatibilidad
-            consumo: [Ignorado] Mantenido por compatibilidad
+            outstanding: Outstanding actual en COP
+            outstanding_with_sim: Outstanding + simulación en COP
         """
         if not self.ax_consumo2 or not self.canvas_consumo2:
             return
         
         ax = self.ax_consumo2
         ax.clear()
-        ax.set_title("Consumo de línea aprobada", fontsize=11, weight='bold')
+        ax.set_title("Consumo vs Línea aprobada", fontsize=11, weight='bold')
         ax.set_ylabel("COP", fontsize=9)
         
-        # Si falta data, solo redibuja ejes
-        if lca_total is None:
-            self.canvas_consumo2.draw_idle()
-            return
+        # === Valores ===
+        lca = float(lca_total or 0)
+        out_now = float(outstanding or 0)
+        out_sim = float(outstanding_with_sim or 0)
         
-        # Mostrar solo una barra gris para la línea aprobada total
-        lca_value = max(lca_total, 0)
+        # Si no hay Outstanding con simulación, usar Outstanding actual
+        if out_sim == 0 and out_now > 0:
+            out_sim = out_now
         
-        ax.bar(
-            ["Línea de crédito aprobada"],
-            [lca_value],
-            color="gray",
-            width=0.5
-        )
+        # Incremento por simulación (si hay)
+        sim_extra = max(out_sim - out_now, 0)
         
-        # Etiqueta con valor total
-        ax.text(0, lca_value * 1.02, f"$ {lca_value:,.0f}", 
-               ha="center", va="bottom", fontsize=10, color="#263238", weight='bold')
+        # === Barra 1: Línea de crédito aprobada ===
+        if lca > 0:
+            ax.bar(
+                ["Línea aprobada"], [lca],
+                color="#d0d0d0", edgecolor="#9e9e9e",
+                label="Línea aprobada",
+                width=0.5
+            )
         
-        # Línea de referencia en 0 y rejilla suave
-        ax.axhline(0, color="#9e9e9e", linewidth=1, linestyle="--")
+        # === Barra 2: Consumo (apilada) ===
+        # Determinar si hay consumo para mostrar
+        tiene_consumo = (out_now > 0 or out_sim > 0)
+        
+        if tiene_consumo:
+            # Verde oscuro: Outstanding actual
+            if out_now > 0:
+                ax.bar(
+                    ["Consumo"], [out_now],
+                    color="#2e7d32", edgecolor="#1b5e20",
+                    label="Outstanding",
+                    width=0.5
+                )
+            
+            # Verde claro: Incremento por simulación
+            if sim_extra > 0:
+                ax.bar(
+                    ["Consumo"], [sim_extra],
+                    bottom=[out_now],
+                    color="#81c784", edgecolor="#66bb6a",
+                    label="Simulación",
+                    width=0.5
+                )
+        
+        # === Ejes y formato ===
+        ax.ticklabel_format(style="plain", axis="y", useOffset=False)
+        ax.yaxis.set_major_formatter(FuncFormatter(lambda x, pos: f"${x:,.0f}"))
+        
+        # Limitar el eje Y con margen superior
+        ymax = max(lca, out_sim, out_now) * 1.10 if max(lca, out_sim, out_now) > 0 else 1
+        ax.set_ylim(0, ymax)
+        
+        # Rejilla horizontal ligera
         ax.grid(axis="y", linestyle=":", linewidth=0.6, alpha=0.6)
         ax.tick_params(axis='both', which='major', labelsize=9)
         
+        # Leyenda
+        ax.legend(loc="upper right", fontsize=8)
+        
         self.canvas_consumo2.draw_idle()
         
-        print(f"[ForwardView] Gráfica de línea aprobada actualizada: LCA=$ {lca_total:,.0f}")
+        print(f"[ForwardView] Gráfica actualizada: LCA=$ {lca:,.0f}, Outstanding=$ {out_now:,.0f}, Outstanding+Sim=$ {out_sim:,.0f}")
     
     def update_chart(self, data: Dict[str, Any]) -> None:
         """

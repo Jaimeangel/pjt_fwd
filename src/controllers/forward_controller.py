@@ -211,13 +211,14 @@ class ForwardController:
             row = df[df["NIT"].astype(str).str.replace("-", "").str.strip() == nit_norm]
             
             if not row.empty:
-                # Convertir de MM a COP reales (* 1,000,000,000)
+                # Convertir de MM (millones) a COP reales (* 1,000,000)
                 if "COP (MM)" in row.columns:
                     cop_mm = row["COP (MM)"].iloc[0]
                     try:
                         import pandas as pd
                         if pd.notna(cop_mm):
-                            LCA = float(cop_mm) * 1_000_000_000.0
+                            LCA = float(cop_mm) * 1_000_000.0
+                            print(f"[ForwardController] LCA MM={cop_mm:,.3f} → LCA real={LCA:,.0f} COP")
                     except (ValueError, TypeError):
                         pass
         
@@ -250,6 +251,9 @@ class ForwardController:
             # % = (Línea de crédito aprobada disponible / Línea de crédito aprobada) × 100
             if LCA > 0:
                 linea_aprobada_pct = (linea_aprobada_disp / LCA) * 100
+            
+            # Log de validación: todos los valores en COP reales
+            print(f"[ForwardController] Cálculos en COP reales: LCA={LCA:,.0f}, consumo={with_sim:,.0f}, disponible={linea_aprobada_disp:,.0f}")
         
         # Formatear porcentaje
         def _fmt_pct(v):
@@ -268,8 +272,12 @@ class ForwardController:
             _fmt_pct(linea_aprobada_pct)
         )
         
-        # Actualizar gráfica de consumo de línea (solo barra gris para LCA)
-        self._view.update_consumo_dual_chart(LCA)
+        # Actualizar gráfica de consumo de línea (LCA + consumo apilado)
+        self._view.update_consumo_dual_chart(
+            lca_total=LCA,
+            outstanding=outstanding,
+            outstanding_with_sim=with_sim
+        )
         
         print(f"[ForwardController] Bloque de exposición actualizado:")
         print(f"   Outstanding: {_fmt(outstanding)}")
@@ -769,10 +777,10 @@ class ForwardController:
                     # Cliente encontrado en líneas de crédito
                     # COP (MM) es la línea aprobada en millones, convertir a COP reales
                     linea_cop_mm = float(cliente_info.get('linea_cop_mm', 0.0))
-                    linea_credito_cop_real = linea_cop_mm * 1_000_000_000.0
+                    linea_credito_cop_real = linea_cop_mm * 1_000_000.0
                     
                     print(f"   → Datos del cliente (desde SettingsModel):")
-                    print(f"      Línea de crédito (COP real): $ {linea_credito_cop_real:,.0f}")
+                    print(f"      Línea de crédito MM: {linea_cop_mm:,.3f} → COP real: $ {linea_credito_cop_real:,.0f}")
                     
                     # 🔹 Obtener LLL GLOBAL (25% del Patrimonio técnico vigente)
                     lll_global = self._settings_model.lll_cop()

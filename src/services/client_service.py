@@ -73,7 +73,9 @@ class ClientService:
             return client["linea_credito"]
         
         # Default mock para clientes no encontrados
-        return 1_000_000_000.0  # $1,000 millones
+        # Nota: Este servicio es mock y no se usa en producción
+        # La línea de crédito real viene de Settings (en MM, convertido a COP en Forward)
+        return 1_000_000_000.0  # $1,000 millones COP (mock)
     
     def get_colchon_interno(self, nit: str) -> float:
         """
