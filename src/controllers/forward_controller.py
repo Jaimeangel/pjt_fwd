@@ -87,10 +87,11 @@ class ForwardController:
                 self._view.load_ibr_requested.disconnect(self.load_ibr)
             except (TypeError, RuntimeError):
                 pass
-            try:
-                self._view.client_selected.disconnect(self.select_client)
-            except (TypeError, RuntimeError):
-                pass
+            # NOTA: Ya NO usamos client_selected (obsoleto)
+            # try:
+            #     self._view.client_selected.disconnect(self.select_client)
+            # except (TypeError, RuntimeError):
+            #     pass
             try:
                 self._view.add_simulation_requested.disconnect(self.add_simulation)
             except (TypeError, RuntimeError):
@@ -111,7 +112,9 @@ class ForwardController:
             # Ahora conectar
             self._view.load_415_requested.connect(self.load_415)
             self._view.load_ibr_requested.connect(self.load_ibr)
-            self._view.client_selected.connect(self.select_client)
+            # NOTA: Ya NO conectamos client_selected (obsoleto, usaba nombres desde 415)
+            # Ahora usamos currentIndexChanged conectado a _on_client_combo_changed
+            # self._view.client_selected.connect(self.select_client)
             self._view.add_simulation_requested.connect(self.add_simulation)
             self._view.delete_simulations_requested.connect(self.delete_simulations)
             self._view.simulate_selected_requested.connect(self.simulate_selected_row)
@@ -236,15 +239,9 @@ class ForwardController:
         catalog = self._settings_model.get_counterparties()
         self._view.populate_counterparties(catalog)
         
-        # Si no hay catálogo, mostrar advertencia
+        # Si no hay catálogo, solo deshabilitar el combo (sin pop-up)
         if not catalog:
-            print("[ForwardController] ⚠️ No hay líneas de crédito cargadas")
-            from PySide6.QtWidgets import QMessageBox
-            QMessageBox.information(
-                self._view,
-                "Falta configuración",
-                "Cargue Líneas de crédito en Configuraciones para seleccionar contrapartes."
-            )
+            print("[ForwardController] ⚠️ No hay líneas de crédito cargadas. Combo deshabilitado.")
         else:
             print(f"[ForwardController] Combo de contrapartes actualizado: {len(catalog)} opciones")
     
@@ -774,12 +771,14 @@ class ForwardController:
                 total_exposure = sum(exposure_by_nit.values())
                 print(f"      ✓ Exposición total: $ {total_exposure:,.2f}")
                 
-                # Actualizar lista de clientes en la vista (usando NOMBRES)
-                if self._view:
-                    nombres_clientes = self._data_model.get_client_names()
-                    self._view.set_client_list(nombres_clientes)
+                # NOTA: Ya no actualizamos el combo desde el 415
+                # El combo se puebla únicamente desde Settings (Líneas de Crédito)
+                # El 415 solo proporciona Outstanding y operaciones para join
+                # if self._view:
+                #     nombres_clientes = self._data_model.get_client_names()
+                #     self._view.set_client_list(nombres_clientes)
             
-            print(f"      ✅ Procesamiento de operaciones completado")
+            print(f"      ✅ Procesamiento de operaciones completado (combo NO actualizado desde 415)")
             
         except Exception as e:
             print(f"      ❌ Error procesando operaciones: {e}")

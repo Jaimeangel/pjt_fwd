@@ -337,7 +337,9 @@ class ForwardView(QWidget):
         self.cmbClientes.setObjectName("cmbClientes")
         # Iniciar vacío, sin selección
         self.cmbClientes.setCurrentIndex(-1)
-        self.cmbClientes.currentTextChanged.connect(self._on_client_combo_changed)
+        # NOTA: Ya NO conectamos currentTextChanged aquí
+        # El controlador conecta currentIndexChanged directamente a su propio handler
+        # self.cmbClientes.currentTextChanged.connect(self._on_client_combo_changed)
         card_b_layout.addWidget(lbl_cliente)
         card_b_layout.addWidget(self.cmbClientes)
         
