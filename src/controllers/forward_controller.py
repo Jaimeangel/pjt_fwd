@@ -247,6 +247,7 @@ class ForwardController:
             linea_aprobada_disp = LCA - with_sim
             
             # Calcular porcentaje de disponibilidad
+            # % = (Línea de crédito aprobada disponible / Línea de crédito aprobada) × 100
             if LCA > 0:
                 linea_aprobada_pct = (linea_aprobada_disp / LCA) * 100
         

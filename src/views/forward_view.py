@@ -413,9 +413,9 @@ class ForwardView(QWidget):
         card_d_layout.addWidget(lbl_outsim_title, 0, 1)
         card_d_layout.addWidget(self.lblOutstandingSim, 1, 1)
         
-        # Fila 2: Línea de crédito aprobada (monto) y (porcentaje)
-        # Línea de crédito aprobada (monto disponible) (fila 2, columna 0)
-        lbl_linea_aprobada_title = QLabel("Línea de crédito aprobada")
+        # Fila 2: Línea de crédito aprobada disponible (monto) y (porcentaje)
+        # Línea de crédito aprobada disponible (monto disponible) (fila 2, columna 0)
+        lbl_linea_aprobada_title = QLabel("Línea de crédito aprobada disponible")
         lbl_linea_aprobada_title.setAlignment(Qt.AlignCenter)
         self.lblLineaAprobadaDisp = QLabel("—")
         self.lblLineaAprobadaDisp.setObjectName("lblLineaAprobadaDisp")
