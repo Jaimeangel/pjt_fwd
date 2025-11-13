@@ -29,6 +29,9 @@ class ForwardSimulationProcessor:
         """
         Construye una operación "415-like" a partir de una fila de simulación.
         
+        IMPORTANTE: Todos los cálculos (delta, VNA, VR, VNE, EPFp) se basan en la
+        PUNTA EMPRESA, exactamente igual que en el cálculo del informe 415.
+        
         Args:
             row: Diccionario con datos de la simulación (usar claves internas)
             nit: NIT de la contraparte
@@ -39,7 +42,13 @@ class ForwardSimulationProcessor:
             Diccionario con estructura compatible con pipeline 415
         """
         # Extraer datos de la fila con valores por defecto
-        punta_cli = row.get("punta_cli", "Compra")
+        # IMPORTANTE: Usar punta_emp para todos los cálculos, igual que en el 415
+        punta_emp = row.get("punta_emp", "Venta")  # Por defecto inverso de punta_cli
+        # Si no existe punta_emp, calcularla como inverso de punta_cli
+        if not punta_emp or punta_emp == "":
+            punta_cli = row.get("punta_cli", "Compra")
+            punta_emp = "Venta" if punta_cli == "Compra" else "Compra"
+        
         nominal_usd = float(row.get("nominal_usd", 0) or 0)
         spot = float(row.get("spot", 0) or 0)
         puntos = float(row.get("puntos", 0) or 0)
@@ -47,20 +56,46 @@ class ForwardSimulationProcessor:
         fecha_venc_str = row.get("fec_venc")
         fecha_sim_str = row.get("fec_sim")
         
-        # Obtener Derecho y Obligación si existen (ya calculados)
-        derecho = row.get("derecho")
-        obligacion = row.get("obligacion")
+        # Calcular DELTA basado en PUNTA EMPRESA (igual que en el 415)
+        # delta = 1 si punta_empresa == "Compra", -1 si "Venta"
+        punta_emp_upper = str(punta_emp).strip().upper()
+        if punta_emp_upper == "COMPRA":
+            delta = 1
+        else:  # "VENTA" o cualquier otro valor
+            delta = -1
         
-        # Calcular vr (valoración)
-        if derecho is not None and obligacion is not None:
-            vr = derecho - obligacion
+        # Obtener Derecho y Obligación calculados desde perspectiva CLIENTE
+        # Estos valores se calcularon según punta_cliente en el modelo de tabla
+        derecho_cliente = row.get("derecho")
+        obligacion_cliente = row.get("obligacion")
+        
+        # Calcular vr_derecho y vr_obligacion desde perspectiva EMPRESA
+        # IMPORTANTE: En el 415, el VR se calcula como vr_derecho - vr_obligacion
+        # donde vr_derecho y vr_obligacion son desde la perspectiva de la EMPRESA.
+        # 
+        # En un forward, las puntas del cliente y la empresa son SIEMPRE opuestas.
+        # Por lo tanto:
+        # - Si punta_cliente == "Compra" y punta_empresa == "Venta":
+        #   - vr_derecho_empresa = vr_obligacion_cliente
+        #   - vr_obligacion_empresa = vr_derecho_cliente
+        # - Si punta_cliente == "Venta" y punta_empresa == "Compra":
+        #   - vr_derecho_empresa = vr_obligacion_cliente
+        #   - vr_obligacion_empresa = vr_derecho_cliente
+        # 
+        # En ambos casos: vr_empresa = vr_obligacion_cliente - vr_derecho_cliente
+        # Esto es equivalente a: vr_empresa = -(vr_derecho_cliente - vr_obligacion_cliente)
+        if derecho_cliente is not None and obligacion_cliente is not None:
+            # Calcular VR desde perspectiva empresa
+            # Las puntas son opuestas, así que intercambiamos derecho y obligacion
+            vr_derecho_empresa = obligacion_cliente
+            vr_obligacion_empresa = derecho_cliente
+            vr = vr_derecho_empresa - vr_obligacion_empresa
         else:
-            # Aproximación si no están calculados: vr ≈ puntos * nominal * delta
-            delta = 1 if punta_cli == "Compra" else -1
+            # Aproximación si no están calculados
+            # VR ≈ puntos * nominal * delta (desde perspectiva empresa)
             vr = puntos * nominal_usd * delta
-        
-        # Convertir delta
-        delta = 1 if punta_cli == "Compra" else -1
+            vr_derecho_empresa = 0.0
+            vr_obligacion_empresa = 0.0
         
         # Validar y convertir fechas
         try:
@@ -95,10 +130,18 @@ class ForwardSimulationProcessor:
         # Calcular t = sqrt(min(td, 252) / 252)
         t = math.sqrt(min(td, 252) / 252.0) if td >= 0 else 0.0
         
-        # Calcular vne = vna * trm * delta * t
-        vne = nominal_usd * spot * delta * t
+        # Calcular VNA (Valor Nominal Ajustado)
+        # En el 415: vna = nomin_der si delta == 1, nomin_obl si delta == -1
+        # En la simulación, asumimos que nominal_usd representa el nominal correcto
+        # según la punta empresa (equivalente a nomin_der si delta=1, nomin_obl si delta=-1)
+        vna = nominal_usd
         
-        # Calcular EPFp = fc * vne
+        # Calcular VNE (Valor Nominal Equivalente) = vna * trm * delta * t
+        # Esta fórmula es la misma que en el 415
+        vne = vna * spot * delta * t
+        
+        # Calcular EPFp (Exposición Potencial Futura) = fc * vne
+        # Esta fórmula es la misma que en el 415
         epfp = fc * vne
         
         # Generar deal simulado
@@ -107,24 +150,37 @@ class ForwardSimulationProcessor:
         deal = f"SIM-{timestamp}-{rand_id}"
         
         # Construir operación 415-like
+        # IMPORTANTE: tipo_operacion debe representar la PUNTA EMPRESA (COMPRA/VENTA)
+        # igual que en el 415
+        tipo_operacion_upper = punta_emp_upper  # Usar punta_emp en mayúsculas
+        
+        # Asignar vr_derecho y vr_obligacion desde perspectiva empresa
+        if derecho_cliente is not None and obligacion_cliente is not None:
+            vr_derecho_final = vr_derecho_empresa
+            vr_obligacion_final = vr_obligacion_empresa
+        else:
+            # Si no hay valores calculados, usar 0.0 (o valores aproximados)
+            vr_derecho_final = 0.0
+            vr_obligacion_final = 0.0
+        
         operation = {
             "contraparte": nombre,
             "nit": nit,
             "deal": deal,
-            "tipo_operacion": punta_cli.upper(),  # "COMPRA" o "VENTA"
-            "vr_derecho": derecho if derecho is not None else 0.0,
-            "vr_obligacion": obligacion if obligacion is not None else 0.0,
+            "tipo_operacion": tipo_operacion_upper,  # "COMPRA" o "VENTA" basado en punta_empresa
+            "vr_derecho": vr_derecho_final,  # Desde perspectiva empresa
+            "vr_obligacion": vr_obligacion_final,  # Desde perspectiva empresa
             "fc": fc,
-            "vna": nominal_usd,
+            "vna": vna,  # VNA basado en punta empresa
             "trm": spot,
             "fecha_liquidacion": fecha_liquidacion,
             "fecha_corte": fecha_corte,
-            "delta": delta,
+            "delta": delta,  # Delta basado en punta empresa
             "td": td,
             "t": t,
-            "vne": vne,
-            "EPFp": epfp,
-            "vr": vr,
+            "vne": vne,  # VNE calculado con delta basado en punta empresa
+            "EPFp": epfp,  # EPFp calculado con VNE correcto
+            "vr": vr,  # VR calculado desde perspectiva empresa (vr_derecho - vr_obligacion)
             # Campos adicionales para compatibilidad
             "nominal_usd": nominal_usd,
             "spot": spot,
@@ -168,21 +224,29 @@ class ForwardSimulationProcessor:
         # Calcular EPFp total
         total_epfp = abs(total_vne * fc)
         
-        # Calcular MGP (Market Gain Potential)
+        # Calcular MGP (Market Gap Provision)
+        # mgp = min(0.05 + 0.95 * exp(total_vr / (1.9 * total_epfp)), 1)
+        # Esta fórmula es la misma que en el 415
         if total_epfp > 0:
             try:
-                exponent = (total_vr - 0) / (1.9 * total_epfp)
+                exponent = total_vr / (1.9 * total_epfp)
                 mgp = min(0.05 + 0.95 * math.exp(exponent), 1.0)
-            except (OverflowError, ZeroDivisionError):
-                mgp = 0.0
+            except (OverflowError, ZeroDivisionError, FloatingPointError):
+                # Si hay overflow, usar valor por defecto (igual que en el 415)
+                mgp = 1.0
         else:
+            # Si total_epfp es 0, no hay exposición
             mgp = 0.0
         
-        # Calcular CRP (Current Replacement Price)
-        crp = max(total_vr - 0, 0.0)
+        # Calcular CRP (Credit Risk Premium)
+        # crp = max(total_vr - 0, 0) = max(total_vr, 0)
+        # Esta fórmula es la misma que en el 415
+        crp = max(total_vr, 0.0)
         
         # Calcular exposición crediticia total
-        exp_cred_total = 1.4 * (crp + mgp * total_epfp)
+        # exp_cred_total = 1.4 * (crp + (mgp * total_epfp))
+        # Esta fórmula es la misma que en el 415
+        exp_cred_total = 1.4 * (crp + (mgp * total_epfp))
         
         return exp_cred_total
     
@@ -220,21 +284,29 @@ class ForwardSimulationProcessor:
         # Calcular EPFp total
         total_epfp = abs(total_vne * fc)
         
-        # Calcular MGP (Market Gain Potential)
+        # Calcular MGP (Market Gap Provision)
+        # mgp = min(0.05 + 0.95 * exp(total_vr / (1.9 * total_epfp)), 1)
+        # Esta fórmula es la misma que en el 415
         if total_epfp > 0:
             try:
-                exponent = (total_vr - 0) / (1.9 * total_epfp)
+                exponent = total_vr / (1.9 * total_epfp)
                 mgp = min(0.05 + 0.95 * math.exp(exponent), 1.0)
-            except (OverflowError, ZeroDivisionError):
-                mgp = 0.0
+            except (OverflowError, ZeroDivisionError, FloatingPointError):
+                # Si hay overflow, usar valor por defecto (igual que en el 415)
+                mgp = 1.0
         else:
+            # Si total_epfp es 0, no hay exposición
             mgp = 0.0
         
-        # Calcular CRP (Current Replacement Price)
-        crp = max(total_vr - 0, 0.0)
+        # Calcular CRP (Credit Risk Premium)
+        # crp = max(total_vr - 0, 0) = max(total_vr, 0)
+        # Esta fórmula es la misma que en el 415
+        crp = max(total_vr, 0.0)
         
         # Calcular exposición crediticia total
-        exp_cred_total = 1.4 * (crp + mgp * total_epfp)
+        # exp_cred_total = 1.4 * (crp + (mgp * total_epfp))
+        # Esta fórmula es la misma que en el 415
+        exp_cred_total = 1.4 * (crp + (mgp * total_epfp))
         
         return exp_cred_total
 
