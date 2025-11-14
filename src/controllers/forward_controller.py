@@ -400,6 +400,7 @@ class ForwardController:
         """
         if self._view:
             self._view.update_exposure_values(0.0, 0.0, 0.0, 0.0)
+            self._view.update_lll_availability(0.0, 0.0, 0.0, 0.0)
             
             zoom = False
             if hasattr(self._view, 'cbZoomConsumo') and self._view.cbZoomConsumo:
