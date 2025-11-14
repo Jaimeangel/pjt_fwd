@@ -326,12 +326,15 @@ class SimulationsTableModel(QAbstractTableModel):
         
         # Leer valores seguros (default 0 si None)
         punta_cliente = row_data.get("punta_cli", "Compra")
-        # ⚠️ IMPORTANTE: Usar punta_empresa para los cálculos (no punta_cliente)
-        # La punta empresa es la que se usa para calcular el forward
-        punta_empresa = row_data.get("punta_emp", "Venta")
+        
+        # ⚠️ IMPORTANTE: Usar punta_empresa para TODOS los cálculos
+        # La punta empresa SIEMPRE es opuesta a la punta cliente
+        punta_empresa = row_data.get("punta_emp", "")
         if not punta_empresa or punta_empresa == "":
-            # Calcular como inverso de punta_cli si no existe
-            punta_empresa = "Venta" if punta_cliente == "Compra" else "Compra"
+            # Importar helper para calcular punta opuesta
+            from src.utils.forward_utils import get_punta_opuesta
+            punta_empresa = get_punta_opuesta(punta_cliente)
+            row_data["punta_emp"] = punta_empresa
         
         spot = float(row_data.get("spot", 0) or 0)
         puntos = float(row_data.get("puntos", 0) or 0)
@@ -363,22 +366,26 @@ class SimulationsTableModel(QAbstractTableModel):
                 row_data["obligacion"] = 0.0
                 row_data["fair_value"] = 0.0
             else:
-                # ⚠️ CORRECCIÓN: Calcular Derecho y Obligación según la PUNTA EMPRESA
-                # (no punta cliente, que es el error que causaba el problema)
+                # ⚠️ CORRECCIÓN CRÍTICA DE SIGNOS:
+                # Calcular Derecho y Obligación según la PUNTA EMPRESA
+                # 
+                # Fórmulas correctas desde perspectiva EMPRESA:
                 if punta_empresa == "Compra":
-                    # Si EMPRESA compra:
-                    # Derecho = (Spot + Puntos)/df * Nominal
-                    derecho = (spot + puntos) / df * nominal
-                    # Obligación = Spot/df * Nominal
-                    obligacion = spot / df * nominal
-                else:  # punta_empresa == "Venta"
-                    # Si EMPRESA vende:
-                    # Derecho = Spot/df * Nominal
+                    # Si EMPRESA COMPRA USD (cliente VENDE):
+                    # - Derecho = USD que recibirá, valorado a spot de hoy
+                    # - Obligación = COP que pagará a tasa forward
                     derecho = spot / df * nominal
-                    # Obligación = (Spot + Puntos)/df * Nominal
                     obligacion = (spot + puntos) / df * nominal
+                else:  # punta_empresa == "Venta"
+                    # Si EMPRESA VENDE USD (cliente COMPRA):
+                    # - Derecho = COP que recibirá a tasa forward
+                    # - Obligación = USD que entregará, valorado a spot de hoy
+                    derecho = (spot + puntos) / df * nominal
+                    obligacion = spot / df * nominal
                 
                 # Fair Value = Derecho - Obligación (desde perspectiva empresa)
+                # Si empresa COMPRA y puntos > 0 → FV < 0 (paga más por el USD)
+                # Si empresa VENDE y puntos > 0 → FV > 0 (recibe más COP)
                 fair_value = derecho - obligacion
                 
                 # Guardar valores

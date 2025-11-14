@@ -41,13 +41,16 @@ class ForwardSimulationProcessor:
         Returns:
             Diccionario con estructura compatible con pipeline 415
         """
+        # Importar helpers
+        from src.utils.forward_utils import delta_from_punta_empresa, get_punta_opuesta
+        
         # Extraer datos de la fila con valores por defecto
         # IMPORTANTE: Usar punta_emp para todos los cálculos, igual que en el 415
-        punta_emp = row.get("punta_emp", "Venta")  # Por defecto inverso de punta_cli
+        punta_emp = row.get("punta_emp", "")
         # Si no existe punta_emp, calcularla como inverso de punta_cli
         if not punta_emp or punta_emp == "":
             punta_cli = row.get("punta_cli", "Compra")
-            punta_emp = "Venta" if punta_cli == "Compra" else "Compra"
+            punta_emp = get_punta_opuesta(punta_cli)
         
         nominal_usd = float(row.get("nominal_usd", 0) or 0)
         spot = float(row.get("spot", 0) or 0)
@@ -56,13 +59,14 @@ class ForwardSimulationProcessor:
         fecha_venc_str = row.get("fec_venc")
         fecha_sim_str = row.get("fec_sim")
         
-        # Calcular DELTA basado en PUNTA EMPRESA (igual que en el 415)
-        # delta = 1 si punta_empresa == "Compra", -1 si "Venta"
+        # Calcular DELTA basado en PUNTA EMPRESA usando helper reutilizable
+        # Este delta se usa en TODOS los cálculos de exposición:
+        # - VNA, VNE, EPFp, exposición total
+        # IMPORTANTE: Siempre usar punta_empresa (no punta_cliente)
+        delta = delta_from_punta_empresa(punta_emp)
+        
+        # Log para debugging (opcional, comentar en producción)
         punta_emp_upper = str(punta_emp).strip().upper()
-        if punta_emp_upper == "COMPRA":
-            delta = 1
-        else:  # "VENTA" o cualquier otro valor
-            delta = -1
         
         # Obtener Derecho y Obligación calculados desde perspectiva EMPRESA
         # ⚠️ CORRECCIÓN (2025-01-XX): Estos valores ahora se calculan directamente
