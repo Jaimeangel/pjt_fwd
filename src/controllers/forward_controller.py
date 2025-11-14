@@ -275,14 +275,19 @@ class ForwardController:
         return group_name, members
     
     def _get_lll_cop(self) -> float:
-        """Calcula el LLL en COP usando Patrimonio Técnico y el porcentaje configurado."""
-        if not self._settings_model:
+        """
+        Devuelve el valor de LLL en COP que ya está calculado y mostrado
+        en el bloque 'Parámetros de crédito' como 'Límite máximo permitido (LLL)(25%)'.
+        
+        Este valor ya incluye el 25% del patrimonio y el ajuste del 10% de colchón de seguridad.
+        En lugar de recalcular desde patrimonio técnico, usa el mismo valor que ve el usuario en la UI.
+        
+        Returns:
+            LLL en COP reales (el mismo que se muestra en UI)
+        """
+        if not self._data_model:
             return 0.0
-        patrimonio = self._settings_model.get_patrimonio_tecnico()
-        lll_pct = self._settings_model.get_lll_percent()
-        if patrimonio <= 0 or lll_pct <= 0:
-            return 0.0
-        return patrimonio * (lll_pct / 100.0)
+        return self._data_model.get_lll_limit_cop()
     
     def _on_client_combo_changed(self, idx: int):
         """
@@ -385,6 +390,13 @@ class ForwardController:
             # LLL global (25% del Patrimonio técnico vigente con colchón)
             lll_global = self._settings_model.lll_cop()
             limite_display = f"$ {lll_global:,.0f}" if lll_global else "—"
+            
+            # Guardar los límites en el modelo para uso posterior
+            if self._data_model:
+                self._data_model.set_credit_limits(
+                    linea_credito_aprobada_cop=lca_real or 0.0,
+                    lll_cop=lll_global or 0.0
+                )
             
             self._view.set_credit_params(linea=linea_display, limite=limite_display)
         
@@ -509,6 +521,15 @@ class ForwardController:
         
         # 🔹 Actualizar el límite máximo permitido (LLL) en "Parámetros de crédito"
         # Esto se actualiza aquí para reflejar cambios en Patrimonio o Colchón automáticamente
+        # También guardar en el modelo para que se use en cálculos de disponibilidad
+        if self._data_model:
+            # Obtener LCA actual del modelo (o 0 si no está definido)
+            lca_actual = self._data_model.get_lca_limit_cop()
+            self._data_model.set_credit_limits(
+                linea_credito_aprobada_cop=lca_actual,
+                lll_cop=LLL or 0.0
+            )
+        
         if self._view:
             limite_display = f"$ {LLL:,.0f}" if LLL else "—"
             self._view.lblLimiteMax.setText(limite_display)
@@ -1012,6 +1033,12 @@ class ForwardController:
                 # Validar que hay líneas de crédito cargadas
                 if self._settings_model.lineas_credito_df.empty:
                     print(f"   ⚠️  No hay líneas de crédito cargadas en SettingsModel")
+                    # Resetear límites en el modelo
+                    if self._data_model:
+                        self._data_model.set_credit_limits(
+                            linea_credito_aprobada_cop=0.0,
+                            lll_cop=0.0
+                        )
                     if self._view:
                         self._view.set_credit_params(linea="—", limite="—")
                         self._view.notify("Cargue primero 'Líneas de crédito' en Configuraciones.", "warning")
@@ -1033,6 +1060,13 @@ class ForwardController:
                     if lll_global:
                         print(f"      LLL global (25% PT): $ {lll_global:,.0f}")
                     
+                    # 🔹 Guardar límites en el modelo para uso posterior
+                    if self._data_model:
+                        self._data_model.set_credit_limits(
+                            linea_credito_aprobada_cop=linea_credito_cop_real,
+                            lll_cop=lll_global or 0.0
+                        )
+                    
                     # 🔹 Actualizar vista con línea de crédito y LLL global
                     if self._view:
                         limite_display = f"$ {lll_global:,.0f}" if lll_global else "—"
@@ -1049,11 +1083,24 @@ class ForwardController:
                     if lll_global:
                         print(f"      LLL global (25% PT): $ {lll_global:,.0f}")
                     
+                    # 🔹 Guardar LLL en el modelo (LCA = 0 porque no se encontró)
+                    if self._data_model:
+                        self._data_model.set_credit_limits(
+                            linea_credito_aprobada_cop=0.0,
+                            lll_cop=lll_global or 0.0
+                        )
+                    
                     if self._view:
                         limite_display = f"$ {lll_global:,.0f}" if lll_global else "—"
                         self._view.set_credit_params(linea="—", limite=limite_display)
             else:
                 print(f"   ⚠️  SettingsModel no disponible, no se pueden cargar límites del cliente.")
+                # Resetear límites en el modelo
+                if self._data_model:
+                    self._data_model.set_credit_limits(
+                        linea_credito_aprobada_cop=0.0,
+                        lll_cop=0.0
+                    )
                 if self._view:
                     self._view.set_credit_params(linea="—", limite="—")
             

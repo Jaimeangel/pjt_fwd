@@ -64,6 +64,10 @@ class ForwardDataModel:
         self._current_group: Optional[str] = None
         self._current_group_members_nits: List[str] = []
         
+        # Parámetros de crédito mostrados en UI
+        self._credit_limit_lca_cop: float = 0.0  # Línea de crédito aprobada (LCA)
+        self._credit_limit_lll_cop: float = 0.0  # Límite máximo permitido (LLL) que se muestra en UI
+        
         # Factor de conversión global (si no hay específico por cliente)
         self.fc_global: float = 0.0
         
@@ -607,4 +611,42 @@ class ForwardDataModel:
             NIT del cliente actual o None
         """
         return self.current_nit
+    
+    def set_credit_limits(self, linea_credito_aprobada_cop: float, lll_cop: float) -> None:
+        """
+        Establece los límites de crédito que se muestran en el bloque 'Parámetros de crédito'.
+        
+        Este método almacena los valores exactos que se visualizan en la UI:
+        - Línea de crédito aprobada (LCA)
+        - Límite máximo permitido (LLL)(25%)
+        
+        Args:
+            linea_credito_aprobada_cop: LCA en COP reales
+            lll_cop: LLL en COP reales (ya incluye 25% PT y ajuste de colchón)
+        """
+        self._credit_limit_lca_cop = float(linea_credito_aprobada_cop or 0.0)
+        self._credit_limit_lll_cop = float(lll_cop or 0.0)
+    
+    def get_lll_limit_cop(self) -> float:
+        """
+        Devuelve el mismo valor que se visualiza en 'Límite máximo permitido (LLL)(25%)'
+        en el bloque 'Parámetros de crédito'.
+        
+        Este valor ya incluye:
+        - El 25% del patrimonio técnico
+        - Menos el 10% de colchón de seguridad
+        
+        Returns:
+            LLL en COP reales tal como se muestra en la UI
+        """
+        return self._credit_limit_lll_cop
+    
+    def get_lca_limit_cop(self) -> float:
+        """
+        Devuelve la Línea de crédito aprobada (LCA) en COP reales.
+        
+        Returns:
+            LCA en COP reales tal como se muestra en la UI
+        """
+        return self._credit_limit_lca_cop
 
