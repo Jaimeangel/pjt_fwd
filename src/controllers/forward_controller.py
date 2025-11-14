@@ -1057,30 +1057,30 @@ class ForwardController:
                 if self._view:
                     self._view.set_credit_params(linea="—", limite="—")
             
-        # Calcular exposiciones y disponibilidades LLL
-        outstanding = 0.0
-        group_outstanding = 0.0
-        if self._data_model:
-            df_cte = self._data_model.get_operations_df_for_nit(nit)
-            df_group = self._data_model.get_operations_df_for_nits(group_members)
-            exposure_cte = calculate_exposure_from_operations(df_cte)
-            exposure_group = calculate_exposure_from_operations(df_group)
-            outstanding = exposure_cte.get("outstanding", 0.0)
-            group_outstanding = exposure_group.get("outstanding", 0.0)
+            # Calcular exposiciones y disponibilidades LLL
+            outstanding = 0.0
+            group_outstanding = 0.0
+            if self._data_model:
+                df_cte = self._data_model.get_operations_df_for_nit(nit)
+                df_group = self._data_model.get_operations_df_for_nits(group_members)
+                exposure_cte = calculate_exposure_from_operations(df_cte)
+                exposure_group = calculate_exposure_from_operations(df_group)
+                outstanding = exposure_cte.get("outstanding", 0.0)
+                group_outstanding = exposure_group.get("outstanding", 0.0)
+                
+                self._data_model.set_exposure_counterparty(outstanding, outstanding)
+                self._data_model.set_exposure_group(group_outstanding, group_outstanding)
+                
+                lll_cop = self._get_lll_cop()
+                disp_cte_cop = lll_cop - outstanding
+                disp_grp_cop = lll_cop - group_outstanding
+                disp_cte_pct = (disp_cte_cop / lll_cop * 100.0) if lll_cop > 0 else 0.0
+                disp_grp_pct = (disp_grp_cop / lll_cop * 100.0) if lll_cop > 0 else 0.0
+                self._data_model.set_lll_availability(disp_cte_cop, disp_cte_pct, disp_grp_cop, disp_grp_pct)
+                self._data_model.set_outstanding_cop(outstanding)
+                self._data_model.set_outstanding_with_sim_cop(outstanding)
             
-            self._data_model.set_exposure_counterparty(outstanding, outstanding)
-            self._data_model.set_exposure_group(group_outstanding, group_outstanding)
-            
-            lll_cop = self._get_lll_cop()
-            disp_cte_cop = lll_cop - outstanding
-            disp_grp_cop = lll_cop - group_outstanding
-            disp_cte_pct = (disp_cte_cop / lll_cop * 100.0) if lll_cop > 0 else 0.0
-            disp_grp_pct = (disp_grp_cop / lll_cop * 100.0) if lll_cop > 0 else 0.0
-            self._data_model.set_lll_availability(disp_cte_cop, disp_cte_pct, disp_grp_cop, disp_grp_pct)
-            self._data_model.set_outstanding_cop(outstanding)
-            self._data_model.set_outstanding_with_sim_cop(outstanding)
-        
-        # Cargar operaciones vigentes del cliente en la tabla
+            # Cargar operaciones vigentes del cliente en la tabla
             if self._data_model and self._operations_table_model:
                 operaciones = self._data_model.get_operaciones_por_nit(nit)
                 print(f"   → Cargando {len(operaciones)} operaciones del cliente en la tabla")
