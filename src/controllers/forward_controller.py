@@ -2,8 +2,13 @@
 Controlador para el módulo Forward.
 """
 
-from typing import List
+from typing import List, Optional
 from datetime import date
+
+import pandas as pd
+
+from src.services.exposure_service import calculate_exposure_from_operations
+from src.utils.ids import normalize_nit
 
 
 class ForwardController:
@@ -244,6 +249,40 @@ class ForwardController:
             print("[ForwardController] ⚠️ No hay líneas de crédito cargadas. Combo deshabilitado.")
         else:
             print(f"[ForwardController] Combo de contrapartes actualizado: {len(catalog)} opciones")
+
+    def _resolve_group_context(self, nit: str) -> tuple[Optional[str], List[str]]:
+        """
+        Determina el grupo conectado y los NITs pertenecientes a ese grupo (normalizados).
+        """
+        nit_norm = normalize_nit(nit)
+        members: List[str] = [nit_norm] if nit_norm else [nit]
+        group_name: Optional[str] = None
+        
+        if self._settings_model and not self._settings_model.lineas_credito_df.empty and nit_norm:
+            group_name = self._settings_model.get_group_for_nit(nit_norm)
+            if group_name:
+                members_info = self._settings_model.get_counterparties_by_group(group_name) or []
+                normalized_members = [
+                    normalize_nit(member.get("nit"))
+                    for member in members_info
+                    if member.get("nit")
+                ]
+                normalized_members = [m for m in normalized_members if m]
+                if normalized_members:
+                    members = normalized_members
+                elif nit_norm not in members:
+                    members.append(nit_norm)
+        return group_name, members
+    
+    def _get_lll_cop(self) -> float:
+        """Calcula el LLL en COP usando Patrimonio Técnico y el porcentaje configurado."""
+        if not self._settings_model:
+            return 0.0
+        patrimonio = self._settings_model.get_patrimonio_tecnico()
+        lll_pct = self._settings_model.get_lll_percent()
+        if patrimonio <= 0 or lll_pct <= 0:
+            return 0.0
+        return patrimonio * (lll_pct / 100.0)
     
     def _on_client_combo_changed(self, idx: int):
         """
@@ -258,10 +297,16 @@ class ForwardController:
             return
         
         # Obtener NIT desde itemData
-        nit = self._view.cmbClientes.itemData(idx) if self._view else None
+        nit_raw = self._view.cmbClientes.itemData(idx) if self._view else None
         
-        if not nit:
+        if not nit_raw:
             print("[ForwardController] ⚠️ No se pudo obtener NIT de la selección")
+            self._show_empty_exposure()
+            return
+        
+        nit = normalize_nit(str(nit_raw))
+        if not nit:
+            print("[ForwardController] ⚠️ NIT inválido en la selección")
             self._show_empty_exposure()
             return
         
@@ -277,6 +322,9 @@ class ForwardController:
         
         if self._data_model:
             self._data_model.reset_simulation_state()
+        
+        # Identificar grupo conectado y miembros
+        group_name, group_members = self._resolve_group_context(nit)
         
         # 2) Obtener LCA desde Settings por NIT (MM → COP reales ×1e6)
         lca_real = None
@@ -295,23 +343,34 @@ class ForwardController:
         ops_list = []
         
         if self._data_model:
-            outstanding = self._data_model.get_outstanding_por_nit(nit)
             ops_list = self._data_model.get_operaciones_por_nit(nit)
-            
-            if outstanding > 0:
-                print(f"   → Outstanding desde 415: $ {outstanding:,.0f} COP")
-            else:
-                print(f"   → Sin Outstanding en 415 para este NIT")
-            
             if ops_list:
                 print(f"   → {len(ops_list)} operaciones vigentes desde 415")
             else:
                 print(f"   → Sin operaciones vigentes en 415")
             
-            # Actualizar modelo
-            self._data_model.set_outstanding_cop(outstanding)
-            self._data_model.set_outstanding_with_sim_cop(None)  # Sin simulación inicial
             self._data_model.set_current_client(nit, nombre)
+            self._data_model.set_current_group(group_name, group_members)
+            
+            df_cte = self._data_model.get_operations_df_for_nit(nit)
+            df_group = self._data_model.get_operations_df_for_nits(group_members)
+            exposure_cte = calculate_exposure_from_operations(df_cte)
+            exposure_group = calculate_exposure_from_operations(df_group)
+            
+            outstanding = exposure_cte.get("outstanding", 0.0)
+            group_outstanding = exposure_group.get("outstanding", 0.0)
+            
+            self._data_model.set_exposure_counterparty(outstanding, outstanding)
+            self._data_model.set_exposure_group(group_outstanding, group_outstanding)
+            lll_cop = self._get_lll_cop()
+            disp_cte_cop = lll_cop - outstanding
+            disp_grp_cop = lll_cop - group_outstanding
+            disp_cte_pct = (disp_cte_cop / lll_cop * 100.0) if lll_cop > 0 else 0.0
+            disp_grp_pct = (disp_grp_cop / lll_cop * 100.0) if lll_cop > 0 else 0.0
+            self._data_model.set_lll_availability(disp_cte_cop, disp_cte_pct, disp_grp_cop, disp_grp_pct)
+            
+            self._data_model.set_outstanding_cop(outstanding)
+            self._data_model.set_outstanding_with_sim_cop(outstanding)
         
         # 4) Actualizar tabla de operaciones
         if self._view and self._operations_table_model:
@@ -340,7 +399,7 @@ class ForwardController:
         Muestra estado vacío cuando no hay contraparte seleccionada o no hay datos.
         """
         if self._view:
-            self._view.update_exposure_block("$ 0", "$ 0", "—", "—")
+            self._view.update_exposure_values(0.0, 0.0, 0.0, 0.0)
             
             zoom = False
             if hasattr(self._view, 'cbZoomConsumo') and self._view.cbZoomConsumo:
@@ -353,47 +412,32 @@ class ForwardController:
     
     def _refresh_exposure(self, lca_real: float | None, outstanding: float, outstanding_with_sim: float):
         """
-        Actualiza el bloque de exposición y la gráfica.
-        
-        Args:
-            lca_real: Línea de crédito aprobada en COP reales
-            outstanding: Outstanding actual en COP
-            outstanding_with_sim: Outstanding + simulación en COP
+        Actualiza el bloque de exposición y la gráfica con los valores actuales.
         """
-        # Calcular disponibilidades
-        disp_lca = None
-        pct_lca = None
+        out_cte = outstanding or 0.0
+        out_cte_sim = outstanding_with_sim if outstanding_with_sim is not None else out_cte
+        out_grp = out_cte
+        out_grp_sim = out_cte_sim
         
-        if lca_real is not None and outstanding_with_sim is not None:
-            disp_lca = lca_real - outstanding_with_sim
-            if lca_real > 0:
-                pct_lca = max((disp_lca / lca_real) * 100.0, 0.0)
+        if self._data_model:
+            out_cte, out_cte_sim = self._data_model.get_exposure_counterparty()
+            out_grp, out_grp_sim = self._data_model.get_exposure_group()
+            out_cte = out_cte or 0.0
+            out_cte_sim = out_cte_sim if out_cte_sim is not None else out_cte
+            out_grp = out_grp or 0.0
+            out_grp_sim = out_grp_sim if out_grp_sim is not None else out_grp
         
-        # Formatear valores
-        def fmt_cop(v):
-            return f"$ {v:,.0f}" if v is not None else "—"
-        
-        def fmt_pct(v):
-            return f"{v:.1f} %" if v is not None else "—"
-        
-        # Actualizar vista
         if self._view:
-            self._view.update_exposure_block(
-                fmt_cop(outstanding),
-                fmt_cop(outstanding_with_sim),
-                fmt_cop(disp_lca) if disp_lca is not None else "—",
-                fmt_pct(pct_lca) if pct_lca is not None else "—"
-            )
+            self._view.update_exposure_values(out_cte, out_cte_sim, out_grp, out_grp_sim)
             
-            # Actualizar gráfica
             zoom = False
             if hasattr(self._view, 'cbZoomConsumo') and self._view.cbZoomConsumo:
                 zoom = self._view.cbZoomConsumo.isChecked()
             
             self._view.update_consumo_dual_chart(
                 lca_total=lca_real or 0.0,
-                outstanding=outstanding or 0.0,
-                outstanding_with_sim=outstanding_with_sim or outstanding or 0.0,
+                outstanding=out_cte,
+                outstanding_with_sim=out_cte_sim,
                 zoom=zoom
             )
     
@@ -423,24 +467,10 @@ class ForwardController:
     
     def refresh_exposure_block(self):
         """
-        Actualiza el bloque de Exposición completo con los 4 valores:
-        - Outstanding
-        - Outstanding + simulación
-        - Línea de crédito aprobada (monto disponible en COP)
-        - Línea de crédito aprobada (porcentaje disponible)
-        
-        Se debe llamar cuando:
-        - Se selecciona una contraparte
-        - Cambia el resultado de simulación
-        - Se limpia la selección o se eliminan simulaciones
-        - Se recargan las Líneas de Crédito en Settings
+        Actualiza el bloque de exposición (contraparte y grupo) y la gráfica de consumo.
         """
         if not self._view or not self._data_model or not self._settings_model:
             return
-        
-        def _fmt(v):
-            """Formatea un valor numérico a string con separador de miles o '—'."""
-            return f"$ {v:,.0f}" if v is not None else "—"
         
         # Obtener NIT del cliente actual
         nit = self._data_model.current_client_nit()
@@ -482,46 +512,20 @@ class ForwardController:
             limite_display = f"$ {LLL:,.0f}" if LLL else "—"
             self._view.lblLimiteMax.setText(limite_display)
         
-        # Obtener Outstanding y Outstanding + simulación
-        outstanding = self._data_model.outstanding_cop()
-        with_sim = self._data_model.outstanding_with_sim_cop()
+        out_cte, out_cte_sim = self._data_model.get_exposure_counterparty()
+        out_grp, out_grp_sim = self._data_model.get_exposure_group()
+        out_cte = out_cte or 0.0
+        out_cte_sim = out_cte_sim if out_cte_sim is not None else out_cte
+        out_grp = out_grp or out_cte
+        out_grp_sim = out_grp_sim if out_grp_sim is not None else out_grp
         
-        # Si no hay simulación, with_sim = outstanding
-        if with_sim is None and outstanding is not None:
-            with_sim = outstanding
-        
-        # Calcular línea de crédito aprobada disponible
-        # linea_aprobada_disp = LCA - (Outstanding + simulación)
-        linea_aprobada_disp = None
-        linea_aprobada_pct = None
-        
-        if LCA is not None and with_sim is not None:
-            linea_aprobada_disp = LCA - with_sim
-            
-            # Calcular porcentaje de disponibilidad
-            # % = (Línea de crédito aprobada disponible / Línea de crédito aprobada) × 100
-            if LCA > 0:
-                linea_aprobada_pct = (linea_aprobada_disp / LCA) * 100
-            
-            # Log de validación: todos los valores en COP reales
-            print(f"[ForwardController] Cálculos en COP reales: LCA={LCA:,.0f}, consumo={with_sim:,.0f}, disponible={linea_aprobada_disp:,.0f}")
-        
-        # Formatear porcentaje
-        def _fmt_pct(v):
-            """Formatea un porcentaje o devuelve '—' si es None o negativo."""
-            if v is None:
-                return "—"
-            if v < 0:
-                return "—"  # No mostrar porcentajes negativos
-            return f"{v:.1f} %"
-        
-        # Actualizar vista (labels de texto)
-        self._view.update_exposure_block(
-            _fmt(outstanding),
-            _fmt(with_sim),
-            _fmt(linea_aprobada_disp),
-            _fmt_pct(linea_aprobada_pct)
-        )
+        self._view.update_exposure_values(out_cte, out_cte_sim, out_grp, out_grp_sim)
+        disp_cte_cop, disp_cte_pct = self._data_model.get_lll_availability_counterparty()
+        disp_grp_cop, disp_grp_pct = self._data_model.get_lll_availability_group()
+        self._view.update_lll_availability(disp_cte_cop, disp_cte_pct, disp_grp_cop, disp_grp_pct)
+        disp_cte_cop, disp_cte_pct = self._data_model.get_lll_availability_counterparty()
+        disp_grp_cop, disp_grp_pct = self._data_model.get_lll_availability_group()
+        self._view.update_lll_availability(disp_cte_cop, disp_cte_pct, disp_grp_cop, disp_grp_pct)
         
         # Actualizar gráfica de consumo de línea (LCA + consumo apilado)
         # Obtener estado del checkbox de zoom
@@ -531,16 +535,14 @@ class ForwardController:
         
         self._view.update_consumo_dual_chart(
             lca_total=LCA,
-            outstanding=outstanding,
-            outstanding_with_sim=with_sim,
+            outstanding=out_cte,
+            outstanding_with_sim=out_cte_sim,
             zoom=zoom
         )
         
         print(f"[ForwardController] Bloque de exposición actualizado:")
-        print(f"   Outstanding: {_fmt(outstanding)}")
-        print(f"   Outstanding + Sim: {_fmt(with_sim)}")
-        print(f"   Línea aprobada disponible: {_fmt(linea_aprobada_disp)}")
-        print(f"   Línea aprobada disponible (%): {_fmt_pct(linea_aprobada_pct)}")
+        print(f"   Contraparte: $ {out_cte:,.0f} → $ {out_cte_sim:,.0f}")
+        print(f"   Grupo: $ {out_grp:,.0f} → $ {out_grp_sim:,.0f}")
     
     def load_415(self, file_path: str) -> None:
         """
@@ -787,83 +789,26 @@ class ForwardController:
     
     def _calculate_credit_exposure_by_nit(self, df: 'pd.DataFrame') -> dict:
         """
-        Calcula la exposición crediticia por NIT.
-        
-        Fórmulas:
-        - total_vne = sum(vne) por NIT
-        - fc = primer fc del NIT
-        - total_epfp = abs(total_vne * fc)
-        - total_vr = sum(vr) por NIT
-        - mgp = min(0.05 + 0.95 * exp(total_vr / (1.9 * total_epfp)), 1)
-        - crp = max(total_vr - 0, 0)
-        - exp_cred_total = 1.4 * (crp + (mgp * total_epfp))
-        
-        Args:
-            df: DataFrame con operaciones enriquecidas
-            
-        Returns:
-            Diccionario {nit: exp_cred_total}
+        Calcula la exposición crediticia por NIT utilizando la función genérica.
         """
-        import numpy as np
-        
         exposure_by_nit = {}
+        if df is None or df.empty or 'nit' not in df.columns:
+            return exposure_by_nit
         
-        # Agrupar por NIT
-        for nit in df['nit'].unique():
+        for nit, ops_cliente in df.groupby('nit'):
             try:
-                # Filtrar operaciones del cliente
-                ops_cliente = df[df['nit'] == nit]
+                result = calculate_exposure_from_operations(ops_cliente)
+                exposure_by_nit[nit] = result.get("outstanding", 0.0)
                 
-                # Calcular total_vne (suma de vne, excluyendo nulos)
-                vne_values = ops_cliente['vne'].dropna()
-                total_vne = vne_values.sum() if len(vne_values) > 0 else 0.0
-                
-                # Obtener primer fc
-                fc_values = ops_cliente['fc'].dropna()
-                fc = fc_values.iloc[0] if len(fc_values) > 0 else 1.0
-                
-                # Calcular total_epfp = abs(total_vne * fc)
-                total_epfp = abs(total_vne * fc)
-                
-                # Calcular total_vr (suma de vr)
-                vr_values = ops_cliente['vr'].dropna()
-                total_vr = vr_values.sum() if len(vr_values) > 0 else 0.0
-                
-                # Calcular MGP (Market Gap Provision)
-                # mgp = min(0.05 + 0.95 * exp((total_vr - 0)/(1.9 * total_epfp)), 1)
-                if total_epfp > 0:
-                    try:
-                        exponent = total_vr / (1.9 * total_epfp)
-                        mgp = min(0.05 + 0.95 * np.exp(exponent), 1.0)
-                    except (OverflowError, FloatingPointError):
-                        # Si hay overflow, usar valor por defecto
-                        mgp = 1.0
-                else:
-                    # Si total_epfp es 0, no hay exposición
-                    mgp = 0.0
-                
-                # Calcular CRP (Credit Risk Premium)
-                # crp = max(total_vr - 0, 0)
-                crp = max(total_vr, 0.0)
-                
-                # Calcular exposición crediticia total
-                # exp_cred_total = 1.4 * (crp + (mgp * total_epfp))
-                exp_cred_total = 1.4 * (crp + (mgp * total_epfp))
-                
-                # Guardar en diccionario
-                exposure_by_nit[nit] = exp_cred_total
-                
-                # Log detallado
                 print(f"         NIT {nit}:")
-                print(f"            Operaciones: {len(ops_cliente)}")
-                print(f"            Total VNE: $ {total_vne:,.2f}")
-                print(f"            FC: {fc:.6f}")
-                print(f"            Total EPFp: $ {total_epfp:,.2f}")
-                print(f"            Total VR: $ {total_vr:,.2f}")
-                print(f"            MGP: {mgp:.6f}")
-                print(f"            CRP: $ {crp:,.2f}")
-                print(f"            → Exposición Crediticia: $ {exp_cred_total:,.2f}")
-                
+                print(f"            Operaciones: {result.get('operations_count', 0)}")
+                print(f"            Total VNE: $ {result.get('total_vne', 0.0):,.2f}")
+                print(f"            FC: {result.get('fc', 0.0):.6f}")
+                print(f"            Total EPFp: $ {result.get('epfp_total', 0.0):,.2f}")
+                print(f"            Total VR: $ {result.get('total_vr', 0.0):,.2f}")
+                print(f"            MGP: {result.get('mgp', 0.0):.6f}")
+                print(f"            CRP: $ {result.get('crp', 0.0):,.2f}")
+                print(f"            → Exposición Crediticia: $ {result.get('outstanding', 0.0):,.2f}")
             except Exception as e:
                 print(f"         ⚠️  Error calculando exposición para NIT {nit}: {e}")
                 exposure_by_nit[nit] = 0.0
@@ -1015,8 +960,22 @@ class ForwardController:
                     self._view.show_exposure(outstanding=0.0, total_con_simulacion=None, disponibilidad=None)
                 if self._operations_table_model:
                     self._operations_table_model.set_operations([])
+                if self._data_model:
+                    self._data_model.set_current_group(None, [])
                 return
             
+            nit_norm = normalize_nit(nit)
+            if not nit_norm:
+                print(f"   ⚠️  NIT inválido o vacío para: {nombre_o_nit}")
+                if self._view:
+                    self._view.show_exposure(outstanding=0.0, total_con_simulacion=None, disponibilidad=None)
+                if self._operations_table_model:
+                    self._operations_table_model.set_operations([])
+                if self._data_model:
+                    self._data_model.set_current_group(None, [])
+                return
+            
+            nit = nit_norm
             print(f"   → NIT determinado: {nit}")
             
             # Guardar cliente actual
@@ -1026,6 +985,26 @@ class ForwardController:
             if self._data_model:
                 nombre = self._data_model.get_nombre_by_nit(nit)
                 self._data_model.set_current_client(nit, nombre)
+            
+            # Determinar grupo conectado y miembros relacionados
+            group_name = None
+            group_members = [nit]
+            if self._settings_model and not self._settings_model.lineas_credito_df.empty:
+                group_name = self._settings_model.get_group_for_nit(nit)
+                if group_name:
+                    members_info = self._settings_model.get_counterparties_by_group(group_name)
+                    extracted = [
+                        normalize_nit(member.get("nit"))
+                        for member in (members_info or [])
+                        if member.get("nit")
+                    ]
+                    extracted = [m for m in extracted if m]
+                    if extracted:
+                        group_members = extracted
+                        if nit not in group_members:
+                            group_members.append(nit)
+            if self._data_model:
+                self._data_model.set_current_group(group_name, group_members)
             
             # 🔹 Buscar cliente en líneas de crédito (SettingsModel) - SIN valores por defecto
             if self._settings_model:
@@ -1037,9 +1016,7 @@ class ForwardController:
                         self._view.notify("Cargue primero 'Líneas de crédito' en Configuraciones.", "warning")
                     return  # No continuar con operaciones si no hay líneas de crédito
                 
-                # Normalizar NIT (por si llega con guión)
-                nit_norm = str(nit).replace("-", "").strip()
-                cliente_info = self._settings_model.get_linea_credito_por_nit(nit_norm)
+                cliente_info = self._settings_model.get_linea_credito_por_nit(nit)
                 
                 if cliente_info:
                     # Cliente encontrado en líneas de crédito
@@ -1064,7 +1041,7 @@ class ForwardController:
                         )
                 else:
                     # Cliente NO encontrado en líneas de crédito
-                    print(f"   ⚠️  Cliente con NIT {nit_norm} no encontrado en líneas de crédito.")
+                    print(f"   ⚠️  Cliente con NIT {nit} no encontrado en líneas de crédito.")
                     
                     # 🔹 Obtener LLL GLOBAL (independiente de si se encontró el cliente)
                     lll_global = self._settings_model.lll_cop()
@@ -1079,23 +1056,30 @@ class ForwardController:
                 if self._view:
                     self._view.set_credit_params(linea="—", limite="—")
             
-            # Obtener exposición crediticia del cliente (outstanding)
-            outstanding = 0.0
-            if self._data_model:
-                outstanding = self._data_model.get_outstanding_por_nit(nit)
-                if outstanding > 0:
-                    print(f"   → Outstanding del cliente: $ {outstanding:,.2f}")
-                else:
-                    print(f"   → Sin operaciones vigentes para este cliente (Outstanding: $ 0.00)")
+        # Calcular exposiciones y disponibilidades LLL
+        outstanding = 0.0
+        group_outstanding = 0.0
+        if self._data_model:
+            df_cte = self._data_model.get_operations_df_for_nit(nit)
+            df_group = self._data_model.get_operations_df_for_nits(group_members)
+            exposure_cte = calculate_exposure_from_operations(df_cte)
+            exposure_group = calculate_exposure_from_operations(df_group)
+            outstanding = exposure_cte.get("outstanding", 0.0)
+            group_outstanding = exposure_group.get("outstanding", 0.0)
             
-            # Actualizar outstanding en el modelo
-            self._current_outstanding = outstanding
-            if self._data_model:
-                self._data_model.set_outstanding_cop(outstanding)
-                # Limpiar simulación (no hay simulación al seleccionar cliente)
-                self._data_model.set_outstanding_with_sim_cop(None)
+            self._data_model.set_exposure_counterparty(outstanding, outstanding)
+            self._data_model.set_exposure_group(group_outstanding, group_outstanding)
             
-            # Cargar operaciones vigentes del cliente en la tabla
+            lll_cop = self._get_lll_cop()
+            disp_cte_cop = lll_cop - outstanding
+            disp_grp_cop = lll_cop - group_outstanding
+            disp_cte_pct = (disp_cte_cop / lll_cop * 100.0) if lll_cop > 0 else 0.0
+            disp_grp_pct = (disp_grp_cop / lll_cop * 100.0) if lll_cop > 0 else 0.0
+            self._data_model.set_lll_availability(disp_cte_cop, disp_cte_pct, disp_grp_cop, disp_grp_pct)
+            self._data_model.set_outstanding_cop(outstanding)
+            self._data_model.set_outstanding_with_sim_cop(outstanding)
+        
+        # Cargar operaciones vigentes del cliente en la tabla
             if self._data_model and self._operations_table_model:
                 operaciones = self._data_model.get_operaciones_por_nit(nit)
                 print(f"   → Cargando {len(operaciones)} operaciones del cliente en la tabla")
@@ -1278,23 +1262,45 @@ class ForwardController:
         vigentes = self._data_model.get_operaciones_por_nit(nit) if self._data_model else []
         print(f"\n   📋 Operaciones vigentes del cliente: {len(vigentes)}")
         
-        # 4) Recalcular exposición conjunta
-        print(f"\n   🧮 Recalculando exposición conjunto (vigentes + {len(simulated_ops)} simuladas)...")
-        exp_total = self._simulation_processor.recalc_exposure_with_multiple_simulations(vigentes, simulated_ops)
+        group_members = self._data_model.current_group_members_nits() if self._data_model else []
+        if not group_members:
+            group_members = [nit]
         
-        print(f"      ✓ Exposición total: $ {exp_total:,.2f} COP")
+        df_cte = self._data_model.get_operations_df_for_nit(nit) if self._data_model else pd.DataFrame()
+        df_group = self._data_model.get_operations_df_for_nits(group_members) if self._data_model else pd.DataFrame()
+        df_simulated_ops = pd.DataFrame(simulated_ops) if simulated_ops else pd.DataFrame()
         
-        # 5) Actualizar modelo y UI
-        outstanding = self._data_model.get_outstanding_por_nit(nit) if self._data_model else 0.0
+        df_cte_sim = pd.concat([df_cte, df_simulated_ops], ignore_index=True) if not df_simulated_ops.empty else df_cte.copy()
+        df_group_sim = pd.concat([df_group, df_simulated_ops], ignore_index=True) if not df_simulated_ops.empty else df_group.copy()
+        
+        exposure_cte_base = calculate_exposure_from_operations(df_cte)
+        exposure_group_base = calculate_exposure_from_operations(df_group)
+        exposure_cte_sim = calculate_exposure_from_operations(df_cte_sim)
+        exposure_group_sim = calculate_exposure_from_operations(df_group_sim)
+        
+        outstanding = exposure_cte_base.get("outstanding", 0.0)
+        outstanding_with_sim = exposure_cte_sim.get("outstanding", 0.0)
+        group_outstanding = exposure_group_base.get("outstanding", 0.0)
+        group_outstanding_sim = exposure_group_sim.get("outstanding", 0.0)
+        lll_cop = self._get_lll_cop()
+        disp_cte_cop = lll_cop - outstanding_with_sim
+        disp_grp_cop = lll_cop - group_outstanding_sim
+        disp_cte_pct = (disp_cte_cop / lll_cop * 100.0) if lll_cop > 0 else 0.0
+        disp_grp_pct = (disp_grp_cop / lll_cop * 100.0) if lll_cop > 0 else 0.0
         
         print(f"\n   📈 Métricas de Exposición:")
         print(f"      Outstanding actual: $ {outstanding:,.2f}")
-        print(f"      Total con simulación ({len(simulated_ops)} ops): $ {exp_total:,.2f}")
+        print(f"      Outstanding grupo: $ {group_outstanding:,.2f}")
+        print(f"      Total con simulación ({len(simulated_ops)} ops): $ {outstanding_with_sim:,.2f}")
+        print(f"      Total grupo con simulación: $ {group_outstanding_sim:,.2f}")
         
         # Guardar en el modelo
         if self._data_model:
+            self._data_model.set_exposure_counterparty(outstanding, outstanding_with_sim)
+            self._data_model.set_exposure_group(group_outstanding, group_outstanding_sim)
+            self._data_model.set_lll_availability(disp_cte_cop, disp_cte_pct, disp_grp_cop, disp_grp_pct)
             self._data_model.set_outstanding_cop(outstanding)
-            self._data_model.set_outstanding_with_sim_cop(exp_total)
+            self._data_model.set_outstanding_with_sim_cop(outstanding_with_sim)
         
         # 🔹 Actualizar bloque de exposición completo
         self.refresh_exposure_block()
@@ -1302,9 +1308,9 @@ class ForwardController:
         if self._view:
             # Mensaje diferenciado según cantidad de operaciones
             if len(simulated_ops) == 1:
-                mensaje = f"Simulación procesada: Exposición total $ {exp_total:,.2f}"
+                mensaje = f"Simulación procesada: Exposición total $ {outstanding_with_sim:,.2f}"
             else:
-                mensaje = f"{len(simulated_ops)} simulaciones procesadas: Exposición total $ {exp_total:,.2f}"
+                mensaje = f"{len(simulated_ops)} simulaciones procesadas: Exposición total $ {outstanding_with_sim:,.2f}"
             
             self._view.notify(mensaje, "info")
         

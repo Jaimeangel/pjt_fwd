@@ -72,10 +72,10 @@ class ForwardView(QWidget):
         
         self.lblLineaCredito = None
         self.lblLimiteMax = None
-        self.lblOutstanding = None
-        self.lblOutstandingSim = None
-        self.lblLineaAprobadaDisp = None  # Línea de crédito aprobada disponible (monto)
-        self.lblLineaAprobadaPct = None   # Línea de crédito aprobada disponible (%)
+        self.lbl_out_cte_value = None
+        self.lbl_out_cte_sim_value = None
+        self.lbl_out_grp_value = None
+        self.lbl_out_grp_sim_value = None
         
         self.chartContainer = None
         
@@ -390,58 +390,55 @@ class ForwardView(QWidget):
         card_c.setMaximumHeight(120)
         column_layout.addWidget(card_c)
         
-        # Card D: Exposición (2 filas x 2 columnas)
+        # Card D: Exposición (dos columnas paralelas)
         card_d = self._create_card("Exposición")
-        card_d_layout = QGridLayout()
-        card_d_layout.setSpacing(8)
+        card_d_layout = QHBoxLayout()
+        card_d_layout.setSpacing(24)
         card_d_layout.setContentsMargins(10, 10, 10, 10)
         
-        # Fila 1: Outstanding y Outstanding + simulación
-        # Outstanding (fila 0, columna 0)
-        lbl_out_title = QLabel("Outstanding")
-        lbl_out_title.setAlignment(Qt.AlignCenter)
-        self.lblOutstanding = QLabel("—")
-        self.lblOutstanding.setObjectName("lblOutstanding")
-        self.lblOutstanding.setFont(font_value)
-        self.lblOutstanding.setAlignment(Qt.AlignCenter)
-        card_d_layout.addWidget(lbl_out_title, 0, 0)
-        card_d_layout.addWidget(self.lblOutstanding, 1, 0)
+        def build_column(title: str) -> QVBoxLayout:
+            col_layout = QVBoxLayout()
+            col_layout.setSpacing(6)
+            lbl_header = QLabel(title)
+            header_font = QFont()
+            header_font.setPointSize(11)
+            header_font.setBold(True)
+            lbl_header.setFont(header_font)
+            lbl_header.setAlignment(Qt.AlignCenter)
+            col_layout.addWidget(lbl_header)
+            col_layout.addSpacing(4)
+            return col_layout
         
-        # Outstanding + simulación (fila 0, columna 1)
-        lbl_outsim_title = QLabel("Outstanding + simulación")
-        lbl_outsim_title.setAlignment(Qt.AlignCenter)
-        self.lblOutstandingSim = QLabel("—")
-        self.lblOutstandingSim.setObjectName("lblOutstandingSim")
-        self.lblOutstandingSim.setFont(font_value)
-        self.lblOutstandingSim.setAlignment(Qt.AlignCenter)
-        card_d_layout.addWidget(lbl_outsim_title, 0, 1)
-        card_d_layout.addWidget(self.lblOutstandingSim, 1, 1)
+        def add_row(layout: QVBoxLayout, label_text: str) -> QLabel:
+            row = QHBoxLayout()
+            row.setSpacing(6)
+            lbl_title = QLabel(label_text)
+            lbl_title.setAlignment(Qt.AlignLeft | Qt.AlignVCenter)
+            lbl_value = QLabel("—")
+            lbl_value.setAlignment(Qt.AlignRight | Qt.AlignVCenter)
+            lbl_value.setFont(font_value)
+            row.addWidget(lbl_title, stretch=1)
+            row.addWidget(lbl_value, stretch=1)
+            layout.addLayout(row)
+            return lbl_value
         
-        # Fila 2: Línea de crédito aprobada disponible (monto) y (porcentaje)
-        # Línea de crédito aprobada disponible (monto disponible) (fila 2, columna 0)
-        lbl_linea_aprobada_title = QLabel("Línea de crédito aprobada disponible")
-        lbl_linea_aprobada_title.setAlignment(Qt.AlignCenter)
-        self.lblLineaAprobadaDisp = QLabel("—")
-        self.lblLineaAprobadaDisp.setObjectName("lblLineaAprobadaDisp")
-        self.lblLineaAprobadaDisp.setFont(font_value)
-        self.lblLineaAprobadaDisp.setAlignment(Qt.AlignCenter)
-        self.lblLineaAprobadaDisp.setStyleSheet("QLabel { color: #2e7d32; font-weight: bold; }")
-        card_d_layout.addWidget(lbl_linea_aprobada_title, 2, 0)
-        card_d_layout.addWidget(self.lblLineaAprobadaDisp, 3, 0)
+        col_contraparte = build_column("Contraparte")
+        self.lbl_out_cte_value = add_row(col_contraparte, "Outstanding:")
+        self.lbl_out_cte_sim_value = add_row(col_contraparte, "Outstanding + simulación:")
+        self.lbl_disp_lll_cte_value = add_row(col_contraparte, "Disponibilidad LLL:")
+        col_contraparte.addStretch()
         
-        # Línea de crédito aprobada disponible (%) (fila 2, columna 1)
-        lbl_linea_aprobada_pct_title = QLabel("Línea de crédito aprobada disponible (%)")
-        lbl_linea_aprobada_pct_title.setAlignment(Qt.AlignCenter)
-        self.lblLineaAprobadaPct = QLabel("—")
-        self.lblLineaAprobadaPct.setObjectName("lblLineaAprobadaPct")
-        self.lblLineaAprobadaPct.setFont(font_value)
-        self.lblLineaAprobadaPct.setAlignment(Qt.AlignCenter)
-        self.lblLineaAprobadaPct.setStyleSheet("QLabel { color: #2e7d32; font-weight: bold; }")
-        card_d_layout.addWidget(lbl_linea_aprobada_pct_title, 2, 1)
-        card_d_layout.addWidget(self.lblLineaAprobadaPct, 3, 1)
+        col_grupo = build_column("Grupo")
+        self.lbl_out_grp_value = add_row(col_grupo, "Outstanding grupo:")
+        self.lbl_out_grp_sim_value = add_row(col_grupo, "Outstanding grupo + simulación:")
+        self.lbl_disp_lll_grp_value = add_row(col_grupo, "Disponibilidad LLL grupo:")
+        col_grupo.addStretch()
+        
+        card_d_layout.addLayout(col_contraparte, stretch=1)
+        card_d_layout.addLayout(col_grupo, stretch=1)
         
         card_d.setLayout(card_d_layout)
-        card_d.setMaximumHeight(200)  # Aumentado para acomodar 2 filas de datos
+        card_d.setMaximumHeight(180)
         column_layout.addWidget(card_d)
         
         column_layout.addStretch()
@@ -941,67 +938,70 @@ class ForwardView(QWidget):
         self.lblLineaCredito.setText(linea)
         self.lblLimiteMax.setText(limite)
     
-    def update_exposure_block(self, outstanding: str, outstanding_sim: str, linea_aprobada_disp: str, linea_aprobada_pct: str) -> None:
-        """
-        Actualiza todos los valores del bloque de Exposición.
-        
-        Args:
-            outstanding: Outstanding formateado (ej: "$ 1,234,567" o "—")
-            outstanding_sim: Outstanding + simulación formateado
-            linea_aprobada_disp: Línea de crédito aprobada disponible (monto en COP)
-            linea_aprobada_pct: Línea de crédito aprobada disponible (porcentaje)
-        """
-        print(f"[ForwardView] update_exposure_block: Outstanding={outstanding}, "
-              f"Outst+Sim={outstanding_sim}, Línea aprobada disp={linea_aprobada_disp}, Línea aprobada %={linea_aprobada_pct}")
-        
-        self.lblOutstanding.setText(outstanding)
-        self.lblOutstandingSim.setText(outstanding_sim)
-        self.lblLineaAprobadaDisp.setText(linea_aprobada_disp)
-        self.lblLineaAprobadaPct.setText(linea_aprobada_pct)
-        
-        # Cambiar color de disponibilidades según el valor
-        self._update_disp_color(self.lblLineaAprobadaDisp, linea_aprobada_disp)
-        self._update_disp_color(self.lblLineaAprobadaPct, linea_aprobada_pct)
-    
-    def _update_disp_color(self, label, value_str: str) -> None:
-        """
-        Actualiza el color de un label de disponibilidad según su valor.
-        
-        Args:
-            label: QLabel a actualizar
-            value_str: Valor como string (puede contener "$ " y separadores)
-        """
-        if value_str == "—":
-            label.setStyleSheet("QLabel { color: #666; font-weight: bold; }")
-            return
-        
+    def _format_cop(self, value: Optional[float]) -> str:
+        """Formatea un valor en COP con separadores o devuelve '—' si no aplica."""
+        if value in (None, "", False):
+            return "—"
         try:
-            # Extraer valor numérico del string
-            value = float(value_str.replace("$", "").replace(",", "").strip())
-            
-            if value < 0:
-                label.setStyleSheet("QLabel { color: #d32f2f; font-weight: bold; }")  # Rojo (negativo)
-            elif value < 1000000:  # Menos de 1 millón
-                label.setStyleSheet("QLabel { color: #f57c00; font-weight: bold; }")  # Naranja (bajo)
-            else:
-                label.setStyleSheet("QLabel { color: #2e7d32; font-weight: bold; }")  # Verde (OK)
-        except (ValueError, AttributeError):
-            label.setStyleSheet("QLabel { color: #666; font-weight: bold; }")  # Gris (sin datos)
+            return f"$ {float(value):,.0f}"
+        except (ValueError, TypeError):
+            return "—"
+    
+    def _format_pct(self, value: Optional[float]) -> str:
+        """Formatea un porcentaje sin decimales o devuelve '—%' si no aplica."""
+        if value in (None, "", False):
+            return "—%"
+        try:
+            return f"{float(value):.0f}%"
+        except (ValueError, TypeError):
+            return "—%"
+    
+    def update_exposure_values(
+        self,
+        out_cte: Optional[float],
+        out_cte_sim: Optional[float],
+        out_grp: Optional[float],
+        out_grp_sim: Optional[float],
+    ) -> None:
+        """Actualiza las columnas de exposición (contraparte y grupo)."""
+        print(
+            "[ForwardView] update_exposure_values:",
+            f"cte={out_cte}, cte_sim={out_cte_sim}, grp={out_grp}, grp_sim={out_grp_sim}",
+        )
+        
+        self.lbl_out_cte_value.setText(self._format_cop(out_cte))
+        self.lbl_out_cte_sim_value.setText(self._format_cop(out_cte_sim if out_cte_sim is not None else out_cte))
+        self.lbl_out_grp_value.setText(self._format_cop(out_grp))
+        self.lbl_out_grp_sim_value.setText(self._format_cop(out_grp_sim if out_grp_sim is not None else out_grp))
+    
+    def update_lll_availability(
+        self,
+        disp_cte_cop: Optional[float],
+        disp_cte_pct: Optional[float],
+        disp_grp_cop: Optional[float],
+        disp_grp_pct: Optional[float],
+    ) -> None:
+        """Actualiza los labels de disponibilidad LLL para contraparte y grupo."""
+        cop_cte = self._format_cop(disp_cte_cop)
+        pct_cte = self._format_pct(disp_cte_pct)
+        cop_grp = self._format_cop(disp_grp_cop)
+        pct_grp = self._format_pct(disp_grp_pct)
+        
+        self.lbl_disp_lll_cte_value.setText(f"{cop_cte}  {pct_cte}")
+        self.lbl_disp_lll_grp_value.setText(f"{cop_grp}  {pct_grp}")
     
     def show_exposure(self, outstanding: float = None, total_con_simulacion: float = None,
                      disponibilidad: float = None) -> None:
         """
-        [OBSOLETO] Método antiguo mantenido por compatibilidad.
-        Usar update_exposure_block() en su lugar.
-        
-        Args:
-            outstanding: Exposición actual (opcional)
-            total_con_simulacion: Exposición total con simulaciones (opcional)
-            disponibilidad: Límite disponible (opcional)
+        Método heredado para compatibilidad con MainWindow.
+        Actualiza únicamente la columna de contraparte.
         """
-        print(f"[ForwardView] show_exposure (obsoleto): outstanding={outstanding}, "
-              f"total={total_con_simulacion}, disponibilidad={disponibilidad}")
-        print("   ⚠️  Usar update_exposure_block() en su lugar")
+        self.update_exposure_values(
+            outstanding,
+            total_con_simulacion,
+            outstanding,
+            total_con_simulacion,
+        )
     
     def update_consumo_dual_chart(self, lca_total: float | None, outstanding: float | None = None, outstanding_with_sim: float | None = None, zoom: bool = False) -> None:
         """

@@ -47,9 +47,10 @@ class SettingsModel(QObject):
         self._lim_endeud: Optional[float] = None
         self._lim_entfin: Optional[float] = None
         self._colchon_seguridad: float = 0.10  # Colchón de seguridad (10% por defecto)
+        self._lll_percent: float = 25.0  # LLL por defecto (25% del patrimonio)
         
         # Líneas de Crédito Vigentes
-        self.lineas_credito_df = pd.DataFrame()  # DataFrame con líneas de crédito cargadas
+        self._lineas_credito_df = pd.DataFrame()  # DataFrame con líneas de crédito cargadas
         
         print("[SettingsModel] Inicializado SIN valores por defecto (todos en None)")
     
@@ -149,6 +150,10 @@ class SettingsModel(QObject):
         """
         return self._patrimonio_tec_cop
     
+    def get_patrimonio_tecnico(self) -> float:
+        """Devuelve el patrimonio técnico vigente (0.0 si no está definido)."""
+        return float(self._patrimonio_tec_cop or 0.0)
+    
     def lll_cop(self) -> Optional[float]:
         """
         Calcula el LLL (Límite de Liquidez Legal) global en COP.
@@ -206,7 +211,16 @@ class SettingsModel(QObject):
         """Obtiene el colchón de seguridad (%)."""
         return self._colchon_seguridad
     
+    def get_lll_percent(self) -> float:
+        """Devuelve el porcentaje de LLL configurado (por defecto 25%)."""
+        return float(self._lll_percent or 25.0)
+    
     # === Líneas de Crédito ===
+    
+    @property
+    def lineas_credito_df(self) -> pd.DataFrame:
+        """Devuelve el DataFrame de líneas de crédito vigente (solo lectura)."""
+        return self._lineas_credito_df
     
     def set_lineas_credito(self, df: pd.DataFrame) -> None:
         """
@@ -216,11 +230,26 @@ class SettingsModel(QObject):
         Args:
             df: DataFrame con columnas NIT, Contraparte, Grupo, EUR (MM), COP (MM)
         """
-        # Normalizar NIT usando la función de utilidades
         df = df.copy()
+        
+        # Normalizar NIT usando la función de utilidades (crear columna NIT_norm)
         if "NIT" in df.columns:
             df["NIT_norm"] = df["NIT"].map(normalize_nit)
-        self.lineas_credito_df = df
+        elif "NIT_norm" in df.columns:
+            df["NIT_norm"] = df["NIT_norm"].map(normalize_nit)
+        else:
+            # Garantizar la existencia de la columna aunque venga sin identificador
+            df["NIT_norm"] = ""
+        
+        # Asegurar que la columna de grupo exista (aunque venga vacía)
+        if "Grupo Conectado de Contrapartes" not in df.columns:
+            df["Grupo Conectado de Contrapartes"] = ""
+        else:
+            df["Grupo Conectado de Contrapartes"] = (
+                df["Grupo Conectado de Contrapartes"].fillna("").astype(str)
+            )
+        
+        self._lineas_credito_df = df
         self.lineasCreditoChanged.emit()
         self.counterpartiesChanged.emit()
         print(f"[SettingsModel] Líneas de crédito actualizadas: {len(df)} registros")
@@ -239,7 +268,8 @@ class SettingsModel(QObject):
             return None
         
         # Buscar cliente por NIT
-        cliente_info = self.lineas_credito_df[self.lineas_credito_df["NIT"] == nit]
+        nit_norm = normalize_nit(nit)
+        cliente_info = self.lineas_credito_df[self.lineas_credito_df["NIT_norm"] == nit_norm]
         
         if cliente_info.empty:
             return None
@@ -322,4 +352,54 @@ class SettingsModel(QObject):
         
         print(f"[SettingsModel] Catálogo de contrapartes: {len(dedup)} registros")
         return dedup
+
+    # === Grupos de contrapartes ===
+    
+    def get_group_for_nit(self, nit_norm: str) -> Optional[str]:
+        """
+        Devuelve el nombre del grupo conectado para un NIT normalizado.
+        """
+        df = getattr(self, "_lineas_credito_df", None)
+        if df is None or df.empty or not nit_norm:
+            return None
+        
+        rows = df[df["NIT_norm"] == nit_norm]
+        if rows.empty:
+            return None
+        
+        grupo = rows["Grupo Conectado de Contrapartes"].iloc[0]
+        grupo = str(grupo).strip() if grupo is not None else ""
+        return grupo or None
+    
+    def get_counterparties_by_group(self, grupo: str) -> List[Dict[str, str]]:
+        """
+        Devuelve lista de contrapartes pertenecientes a un grupo dado.
+        """
+        df = getattr(self, "_lineas_credito_df", None)
+        if df is None or df.empty:
+            return []
+        
+        if not grupo:
+            return []
+        
+        grupo_normalizado = grupo.strip()
+        if not grupo_normalizado:
+            return []
+        
+        mask = df["Grupo Conectado de Contrapartes"].astype(str).str.strip() == grupo_normalizado
+        sub = df[mask]
+        if sub.empty:
+            return []
+        
+        result: List[Dict[str, str]] = []
+        for _, row in sub.iterrows():
+            nit_norm = row.get("NIT_norm")
+            if not nit_norm:
+                nit_norm = normalize_nit(row.get("NIT", ""))
+            result.append({
+                "nit": nit_norm,
+                "nombre": row.get("Contraparte", ""),
+                "grupo": row.get("Grupo Conectado de Contrapartes", ""),
+            })
+        return result
 

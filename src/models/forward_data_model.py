@@ -4,6 +4,8 @@ Modelo de datos para operaciones Forward y archivo 415.
 
 from typing import Optional, Dict, Any, List
 from datetime import date
+
+import pandas as pd
 from src.utils.ids import normalize_nit
 
 
@@ -47,6 +49,20 @@ class ForwardDataModel:
         # Cliente actual seleccionado
         self.current_nit: Optional[str] = None
         self.current_nombre: Optional[str] = None
+        self._current_group: Optional[str] = None
+        self._current_group_members_nits: List[str] = []
+        
+        # Exposición agregada (contraparte y grupo)
+        self._exposure_counterparty: float = 0.0
+        self._exposure_counterparty_sim: float = 0.0
+        self._exposure_group: float = 0.0
+        self._exposure_group_sim: float = 0.0
+        self._disp_lll_cte_cop: float = 0.0
+        self._disp_lll_cte_pct: float = 0.0
+        self._disp_lll_grp_cop: float = 0.0
+        self._disp_lll_grp_pct: float = 0.0
+        self._current_group: Optional[str] = None
+        self._current_group_members_nits: List[str] = []
         
         # Factor de conversión global (si no hay específico por cliente)
         self.fc_global: float = 0.0
@@ -121,6 +137,19 @@ class ForwardDataModel:
         print(f"   - {len(self.outstanding_por_cliente)} clientes con exposición")
         print(f"   - {len(self.operaciones_por_nit)} clientes con operaciones")
         print(f"   - {len(self.nit_to_nombre)} mapeos NIT->Nombre")
+    
+    def _ensure_dataset_has_nit_norm(self) -> None:
+        """Garantiza que dataset_415 tenga columna nit_norm normalizada."""
+        if self.dataset_415 is None or self.dataset_415.empty:
+            return
+        if 'nit_norm' in self.dataset_415.columns:
+            return
+        df = self.dataset_415.copy()
+        if 'nit' in df.columns:
+            df['nit_norm'] = df['nit'].astype(str).map(normalize_nit)
+        else:
+            df['nit_norm'] = df.get('nit_norm', "").astype(str).map(normalize_nit)
+        self.dataset_415 = df
     
     def set_outstanding_por_nit(self, data: Dict[str, float]) -> None:
         """
@@ -198,6 +227,28 @@ class ForwardDataModel:
         """
         return self.operaciones_por_nit.get(nit, [])
     
+    def _filter_dataset_by_nits(self, nits: List[str]) -> pd.DataFrame:
+        """Filtra el dataset 415 por una lista de NITs normalizados."""
+        self._ensure_dataset_has_nit_norm()
+        df = self.dataset_415
+        if df is None or df.empty or not nits:
+            return pd.DataFrame()
+        normalized = [normalize_nit(n) for n in nits if normalize_nit(n)]
+        if not normalized:
+            return pd.DataFrame()
+        mask = df['nit_norm'].isin(normalized)
+        if 'UCaptura' in df.columns:
+            mask = mask & (df['UCaptura'].astype(str) == '1')
+        return df[mask].copy()
+    
+    def get_operations_df_for_nit(self, nit: str) -> pd.DataFrame:
+        """Devuelve un DataFrame con las operaciones vigentes del NIT dado."""
+        return self._filter_dataset_by_nits([nit])
+    
+    def get_operations_df_for_nits(self, nits: List[str]) -> pd.DataFrame:
+        """Devuelve un DataFrame con las operaciones vigentes de los NITs proporcionados."""
+        return self._filter_dataset_by_nits(nits)
+    
     def get_current_client_nit(self) -> Optional[str]:
         """
         Obtiene el NIT del cliente actualmente seleccionado.
@@ -229,6 +280,57 @@ class ForwardDataModel:
             self.current_nombre = nombre
         else:
             self.current_nombre = self.get_nombre_by_nit(nit)
+    
+    def set_current_group(self, group_name: Optional[str], members_nits: Optional[List[str]]) -> None:
+        """
+        Establece el grupo conectado del cliente actual y sus miembros (NIT_norm).
+        """
+        self._current_group = group_name.strip() if isinstance(group_name, str) and group_name.strip() else None
+        members = members_nits or []
+        cleaned: List[str] = []
+        seen = set()
+        for nit in members:
+            nit_norm = normalize_nit(nit)
+            if nit_norm and nit_norm not in seen:
+                seen.add(nit_norm)
+                cleaned.append(nit_norm)
+        if not cleaned and self.current_nit:
+            cleaned = [normalize_nit(self.current_nit)]
+        self._current_group_members_nits = cleaned
+    
+    def current_group(self) -> Optional[str]:
+        """Obtiene el nombre del grupo conectado del cliente actual."""
+        return self._current_group
+    
+    def current_group_members_nits(self) -> List[str]:
+        """Obtiene los NITs normalizados de los miembros del grupo actual."""
+        return list(self._current_group_members_nits)
+    
+    def set_current_group(self, group_name: Optional[str], members_nits: Optional[List[str]]) -> None:
+        """
+        Establece la información del grupo conectado al cliente actual.
+        """
+        self._current_group = group_name.strip() if isinstance(group_name, str) and group_name.strip() else None
+        members = members_nits or []
+        # Normalizar lista eliminando duplicados vacíos
+        seen = set()
+        cleaned: List[str] = []
+        for nit in members:
+            if not nit:
+                continue
+            nit_norm = normalize_nit(nit)
+            if nit_norm and nit_norm not in seen:
+                seen.add(nit_norm)
+                cleaned.append(nit_norm)
+        self._current_group_members_nits = cleaned
+    
+    def current_group(self) -> Optional[str]:
+        """Retorna el nombre del grupo conectado del cliente actual."""
+        return self._current_group
+    
+    def current_group_members_nits(self) -> List[str]:
+        """Retorna los NITs normalizados que pertenecen al grupo del cliente actual."""
+        return list(self._current_group_members_nits)
     
     def get_fc_for_nit(self, nit: str) -> float:
         """
@@ -457,6 +559,45 @@ class ForwardDataModel:
             value: Outstanding con simulación en COP o None
         """
         self._outstanding_with_sim_cop = value
+    
+    def set_exposure_counterparty(self, outstanding: float, outstanding_with_sim: float) -> None:
+        """Guarda la exposición por contraparte (con y sin simulación)."""
+        self._exposure_counterparty = float(outstanding or 0.0)
+        self._exposure_counterparty_sim = float(outstanding_with_sim or 0.0)
+    
+    def set_exposure_group(self, outstanding: float, outstanding_with_sim: float) -> None:
+        """Guarda la exposición por grupo (con y sin simulación)."""
+        self._exposure_group = float(outstanding or 0.0)
+        self._exposure_group_sim = float(outstanding_with_sim or 0.0)
+    
+    def get_exposure_counterparty(self) -> tuple[float, float]:
+        """Retorna (outstanding, outstanding + simulación) de la contraparte."""
+        return self._exposure_counterparty, self._exposure_counterparty_sim
+    
+    def get_exposure_group(self) -> tuple[float, float]:
+        """Retorna (outstanding, outstanding + simulación) del grupo."""
+        return self._exposure_group, self._exposure_group_sim
+    
+    def set_lll_availability(
+        self,
+        disp_cte_cop: float,
+        disp_cte_pct: float,
+        disp_grp_cop: float,
+        disp_grp_pct: float,
+    ) -> None:
+        """Guarda las disponibilidades de LLL para contraparte y grupo."""
+        self._disp_lll_cte_cop = float(disp_cte_cop or 0.0)
+        self._disp_lll_cte_pct = float(disp_cte_pct or 0.0)
+        self._disp_lll_grp_cop = float(disp_grp_cop or 0.0)
+        self._disp_lll_grp_pct = float(disp_grp_pct or 0.0)
+    
+    def get_lll_availability_counterparty(self) -> tuple[float, float]:
+        """Retorna (disp COP, disp %) de la contraparte."""
+        return self._disp_lll_cte_cop, self._disp_lll_cte_pct
+    
+    def get_lll_availability_group(self) -> tuple[float, float]:
+        """Retorna (disp COP, disp %) del grupo."""
+        return self._disp_lll_grp_cop, self._disp_lll_grp_pct
     
     def current_client_nit(self) -> Optional[str]:
         """
