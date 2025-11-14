@@ -64,31 +64,21 @@ class ForwardSimulationProcessor:
         else:  # "VENTA" o cualquier otro valor
             delta = -1
         
-        # Obtener Derecho y Obligación calculados desde perspectiva CLIENTE
-        # Estos valores se calcularon según punta_cliente en el modelo de tabla
-        derecho_cliente = row.get("derecho")
-        obligacion_cliente = row.get("obligacion")
+        # Obtener Derecho y Obligación calculados desde perspectiva EMPRESA
+        # ⚠️ CORRECCIÓN (2025-01-XX): Estos valores ahora se calculan directamente
+        # desde la perspectiva de la EMPRESA usando punta_emp en el modelo de tabla.
+        # Ya NO necesitamos intercambiarlos.
+        derecho_empresa = row.get("derecho")
+        obligacion_empresa = row.get("obligacion")
         
-        # Calcular vr_derecho y vr_obligacion desde perspectiva EMPRESA
+        # Calcular VR desde perspectiva EMPRESA
         # IMPORTANTE: En el 415, el VR se calcula como vr_derecho - vr_obligacion
         # donde vr_derecho y vr_obligacion son desde la perspectiva de la EMPRESA.
-        # 
-        # En un forward, las puntas del cliente y la empresa son SIEMPRE opuestas.
-        # Por lo tanto:
-        # - Si punta_cliente == "Compra" y punta_empresa == "Venta":
-        #   - vr_derecho_empresa = vr_obligacion_cliente
-        #   - vr_obligacion_empresa = vr_derecho_cliente
-        # - Si punta_cliente == "Venta" y punta_empresa == "Compra":
-        #   - vr_derecho_empresa = vr_obligacion_cliente
-        #   - vr_obligacion_empresa = vr_derecho_cliente
-        # 
-        # En ambos casos: vr_empresa = vr_obligacion_cliente - vr_derecho_cliente
-        # Esto es equivalente a: vr_empresa = -(vr_derecho_cliente - vr_obligacion_cliente)
-        if derecho_cliente is not None and obligacion_cliente is not None:
-            # Calcular VR desde perspectiva empresa
-            # Las puntas son opuestas, así que intercambiamos derecho y obligacion
-            vr_derecho_empresa = obligacion_cliente
-            vr_obligacion_empresa = derecho_cliente
+        if derecho_empresa is not None and obligacion_empresa is not None:
+            # Usar directamente los valores calculados en la tabla
+            # (ya están desde perspectiva empresa)
+            vr_derecho_empresa = derecho_empresa
+            vr_obligacion_empresa = obligacion_empresa
             vr = vr_derecho_empresa - vr_obligacion_empresa
         else:
             # Aproximación si no están calculados
@@ -155,7 +145,7 @@ class ForwardSimulationProcessor:
         tipo_operacion_upper = punta_emp_upper  # Usar punta_emp en mayúsculas
         
         # Asignar vr_derecho y vr_obligacion desde perspectiva empresa
-        if derecho_cliente is not None and obligacion_cliente is not None:
+        if derecho_empresa is not None and obligacion_empresa is not None:
             vr_derecho_final = vr_derecho_empresa
             vr_obligacion_final = vr_obligacion_empresa
         else:

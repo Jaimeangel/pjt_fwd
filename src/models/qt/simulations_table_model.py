@@ -326,6 +326,13 @@ class SimulationsTableModel(QAbstractTableModel):
         
         # Leer valores seguros (default 0 si None)
         punta_cliente = row_data.get("punta_cli", "Compra")
+        # ⚠️ IMPORTANTE: Usar punta_empresa para los cálculos (no punta_cliente)
+        # La punta empresa es la que se usa para calcular el forward
+        punta_empresa = row_data.get("punta_emp", "Venta")
+        if not punta_empresa or punta_empresa == "":
+            # Calcular como inverso de punta_cli si no existe
+            punta_empresa = "Venta" if punta_cliente == "Compra" else "Compra"
+        
         spot = float(row_data.get("spot", 0) or 0)
         puntos = float(row_data.get("puntos", 0) or 0)
         nominal = float(row_data.get("nominal_usd", 0) or 0)
@@ -356,19 +363,22 @@ class SimulationsTableModel(QAbstractTableModel):
                 row_data["obligacion"] = 0.0
                 row_data["fair_value"] = 0.0
             else:
-                # Calcular Derecho y Obligación según la punta
-                if punta_cliente == "Compra":
+                # ⚠️ CORRECCIÓN: Calcular Derecho y Obligación según la PUNTA EMPRESA
+                # (no punta cliente, que es el error que causaba el problema)
+                if punta_empresa == "Compra":
+                    # Si EMPRESA compra:
                     # Derecho = (Spot + Puntos)/df * Nominal
                     derecho = (spot + puntos) / df * nominal
                     # Obligación = Spot/df * Nominal
                     obligacion = spot / df * nominal
-                else:  # "Venta"
+                else:  # punta_empresa == "Venta"
+                    # Si EMPRESA vende:
                     # Derecho = Spot/df * Nominal
                     derecho = spot / df * nominal
                     # Obligación = (Spot + Puntos)/df * Nominal
                     obligacion = (spot + puntos) / df * nominal
                 
-                # Fair Value = Derecho - Obligación
+                # Fair Value = Derecho - Obligación (desde perspectiva empresa)
                 fair_value = derecho - obligacion
                 
                 # Guardar valores
