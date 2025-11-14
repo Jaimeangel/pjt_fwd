@@ -1099,7 +1099,8 @@ class ForwardController:
             # Emitir señal global
             if self._signals:
                 self._signals.forward_client_changed.emit(nit)
-        
+        except Exception as e:
+            print(f"[ForwardController] Error en select_client cerca de outstanding: {e}")
         finally:
             # Liberar kill-switch
             self._updating_client = False
