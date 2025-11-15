@@ -349,7 +349,8 @@ class ForwardView(QWidget):
         self.lbl_group_title.setVisible(False)
         card_b_layout.addWidget(self.lbl_group_title)
         
-        self.group_tags_layout = QHBoxLayout()
+        # Usar QGridLayout para tags responsivos (varias filas si hay muchas contrapartes)
+        self.group_tags_layout = QGridLayout()
         self.group_tags_layout.setSpacing(5)
         self.group_tags_layout.setContentsMargins(0, 0, 0, 0)
         
@@ -450,8 +451,12 @@ class ForwardView(QWidget):
         self.lbl_disp_lll_grp_value = add_row(col_grupo, "Disponibilidad LLL grupo:")
         col_grupo.addStretch()
         
+        # Envolver col_grupo en un widget para poder ocultarlo fácilmente
+        self.group_exposure_container = QWidget()
+        self.group_exposure_container.setLayout(col_grupo)
+        
         card_d_layout.addLayout(col_contraparte, stretch=1)
-        card_d_layout.addLayout(col_grupo, stretch=1)
+        card_d_layout.addWidget(self.group_exposure_container, stretch=1)
         
         card_d.setLayout(card_d_layout)
         card_d.setMaximumHeight(180)
@@ -838,6 +843,25 @@ class ForwardView(QWidget):
         
         print(f"   ✓ Combo de contrapartes actualizado con {len(items)} opciones (sin selección)")
     
+    def set_group_exposure_visible(self, visible: bool) -> None:
+        """
+        Muestra u oculta toda la columna de grupo en el bloque 'Exposición'.
+        
+        Args:
+            visible: True para mostrar, False para ocultar
+        """
+        if hasattr(self, 'group_exposure_container'):
+            self.group_exposure_container.setVisible(visible)
+            
+            # Opcional: limpiar valores cuando se oculta
+            if not visible:
+                if hasattr(self, 'lbl_out_grp_value'):
+                    self.lbl_out_grp_value.setText("—")
+                if hasattr(self, 'lbl_out_grp_sim_value'):
+                    self.lbl_out_grp_sim_value.setText("—")
+                if hasattr(self, 'lbl_disp_lll_grp_value'):
+                    self.lbl_disp_lll_grp_value.setText("—")
+    
     def update_group_members(self, group_name: Optional[str], members: List[Dict[str, Any]]) -> None:
         """
         Actualiza la UI de contrapartes de grupo bajo el bloque 'Cliente'.
@@ -848,7 +872,7 @@ class ForwardView(QWidget):
         
         Notes:
             - Si el grupo no tiene más de 1 miembro, oculta el contenedor
-            - Muestra tags/chips para cada contraparte del grupo
+            - Muestra tags/chips para cada contraparte del grupo en un grid responsivo
         """
         # 1. Limpiar tags existentes
         while self.group_tags_layout.count():
@@ -861,14 +885,19 @@ class ForwardView(QWidget):
             # No hay grupo real (solo 0 o 1 miembro)
             self.lbl_group_title.setVisible(False)
             self.group_wrapper_widget.setVisible(False)
+            # Ocultar también la columna de exposición de grupo
+            self.set_group_exposure_visible(False)
             return
         
         # 2. Mostrar título del grupo
         self.lbl_group_title.setText(f"Grupo: {group_name}")
         self.lbl_group_title.setVisible(True)
         
-        # 3. Crear tags para cada miembro del grupo
-        for m in members:
+        # 3. Crear tags para cada miembro del grupo en un grid responsivo
+        # Número máximo de tags por fila (3 para mantener legibilidad)
+        max_per_row = 3
+        
+        for index, m in enumerate(members):
             tag = QLabel(m.get("nombre", ""))
             tag.setObjectName("GroupTagLabel")
             tag.setStyleSheet("""
@@ -881,12 +910,14 @@ class ForwardView(QWidget):
                     color: #333333;
                 }
             """)
-            self.group_tags_layout.addWidget(tag)
-        
-        # Agregar spacer para empujar tags a la izquierda
-        self.group_tags_layout.addStretch()
+            # Calcular fila y columna para el grid
+            row = index // max_per_row
+            col = index % max_per_row
+            self.group_tags_layout.addWidget(tag, row, col)
         
         self.group_wrapper_widget.setVisible(True)
+        # Mostrar también la columna de exposición de grupo
+        self.set_group_exposure_visible(True)
     
     def update_info_basica(self, patrimonio: str, trm_cop_usd: str, trm_cop_eur: str) -> None:
         """
