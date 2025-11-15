@@ -343,8 +343,10 @@ class ForwardController:
                 except (ValueError, TypeError):
                     pass
         
-        # 3) Buscar datos en 415 por NIT normalizado
+        # 3) Buscar datos en 415 por NIT normalizado y calcular exposiciones
+        # IMPORTANTE: Siempre calcular exposiciones, incluso si no hay operaciones (outstanding = 0)
         outstanding = 0.0
+        group_outstanding = 0.0
         ops_list = []
         
         if self._data_model:
@@ -352,26 +354,40 @@ class ForwardController:
             if ops_list:
                 print(f"   → {len(ops_list)} operaciones vigentes desde 415")
             else:
-                print(f"   → Sin operaciones vigentes en 415")
+                print(f"   → Sin operaciones vigentes en 415 (outstanding = 0)")
             
             self._data_model.set_current_client(nit, nombre)
             self._data_model.set_current_group(group_name, group_members)
             
+            # Calcular exposiciones de contraparte y grupo
             df_cte = self._data_model.get_operations_df_for_nit(nit)
             df_group = self._data_model.get_operations_df_for_nits(group_members)
+            
             exposure_cte = calculate_exposure_from_operations(df_cte)
             exposure_group = calculate_exposure_from_operations(df_group)
             
             outstanding = exposure_cte.get("outstanding", 0.0)
             group_outstanding = exposure_group.get("outstanding", 0.0)
             
+            print(f"   → Outstanding Contraparte: $ {outstanding:,.0f}")
+            print(f"   → Outstanding Grupo: $ {group_outstanding:,.0f}")
+            
+            # Setear exposiciones base (sin simulación)
             self._data_model.set_exposure_counterparty(outstanding, outstanding)
             self._data_model.set_exposure_group(group_outstanding, group_outstanding)
+            
+            # 🔹 CRÍTICO: Calcular disponibilidades LLL SIEMPRE, incluso si outstanding = 0
             lll_cop = self._get_lll_cop()
+            print(f"   → LLL base para disponibilidad: $ {lll_cop:,.0f}")
+            
             disp_cte_cop = lll_cop - outstanding
             disp_grp_cop = lll_cop - group_outstanding
             disp_cte_pct = (disp_cte_cop / lll_cop * 100.0) if lll_cop > 0 else 0.0
             disp_grp_pct = (disp_grp_cop / lll_cop * 100.0) if lll_cop > 0 else 0.0
+            
+            print(f"   → Disponibilidad Contraparte: $ {disp_cte_cop:,.0f} ({disp_cte_pct:.2f}%)")
+            print(f"   → Disponibilidad Grupo: $ {disp_grp_cop:,.0f} ({disp_grp_pct:.2f}%)")
+            
             self._data_model.set_lll_availability(disp_cte_cop, disp_cte_pct, disp_grp_cop, disp_grp_pct)
             
             self._data_model.set_outstanding_cop(outstanding)
@@ -426,6 +442,8 @@ class ForwardController:
     def _refresh_exposure(self, lca_real: float | None, outstanding: float, outstanding_with_sim: float):
         """
         Actualiza el bloque de exposición y la gráfica con los valores actuales.
+        
+        IMPORTANTE: También actualiza las disponibilidades LLL desde el modelo.
         """
         out_cte = outstanding or 0.0
         out_cte_sim = outstanding_with_sim if outstanding_with_sim is not None else out_cte
@@ -441,7 +459,17 @@ class ForwardController:
             out_grp_sim = out_grp_sim if out_grp_sim is not None else out_grp
         
         if self._view:
+            # Actualizar valores de exposición
             self._view.update_exposure_values(out_cte, out_cte_sim, out_grp, out_grp_sim)
+            
+            # 🔹 CORRECCIÓN: También actualizar disponibilidades LLL desde el modelo
+            if self._data_model:
+                disp_cte_cop, disp_cte_pct = self._data_model.get_lll_availability_counterparty()
+                disp_grp_cop, disp_grp_pct = self._data_model.get_lll_availability_group()
+                self._view.update_lll_availability(disp_cte_cop, disp_cte_pct, disp_grp_cop, disp_grp_pct)
+                print(f"   [_refresh_exposure] Disponibilidad LLL actualizada:")
+                print(f"      Contraparte: $ {disp_cte_cop:,.0f} ({disp_cte_pct:.2f}%)")
+                print(f"      Grupo: $ {disp_grp_cop:,.0f} ({disp_grp_pct:.2f}%)")
             
             zoom = False
             if hasattr(self._view, 'cbZoomConsumo') and self._view.cbZoomConsumo:
