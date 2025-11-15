@@ -343,6 +343,22 @@ class ForwardView(QWidget):
         card_b_layout.addWidget(lbl_cliente)
         card_b_layout.addWidget(self.cmbClientes)
         
+        # Contenedor para mostrar contrapartes del grupo (tags/chips)
+        self.lbl_group_title = QLabel("")
+        self.lbl_group_title.setObjectName("GroupTitleLabel")
+        self.lbl_group_title.setVisible(False)
+        card_b_layout.addWidget(self.lbl_group_title)
+        
+        self.group_tags_layout = QHBoxLayout()
+        self.group_tags_layout.setSpacing(5)
+        self.group_tags_layout.setContentsMargins(0, 0, 0, 0)
+        
+        group_wrapper = QWidget()
+        group_wrapper.setLayout(self.group_tags_layout)
+        group_wrapper.setVisible(False)
+        self.group_wrapper_widget = group_wrapper
+        card_b_layout.addWidget(group_wrapper)
+        
         card_b.setLayout(card_b_layout)
         column_layout.addWidget(card_b)
         
@@ -821,6 +837,56 @@ class ForwardView(QWidget):
         self.cmbClientes.blockSignals(False)
         
         print(f"   ✓ Combo de contrapartes actualizado con {len(items)} opciones (sin selección)")
+    
+    def update_group_members(self, group_name: Optional[str], members: List[Dict[str, Any]]) -> None:
+        """
+        Actualiza la UI de contrapartes de grupo bajo el bloque 'Cliente'.
+        
+        Args:
+            group_name: Nombre del grupo (string) o None.
+            members: Lista de dicts {'nit': str, 'nombre': str, 'grupo': str}
+        
+        Notes:
+            - Si el grupo no tiene más de 1 miembro, oculta el contenedor
+            - Muestra tags/chips para cada contraparte del grupo
+        """
+        # 1. Limpiar tags existentes
+        while self.group_tags_layout.count():
+            item = self.group_tags_layout.takeAt(0)
+            widget = item.widget()
+            if widget is not None:
+                widget.deleteLater()
+        
+        if not group_name or not members or len(members) <= 1:
+            # No hay grupo real (solo 0 o 1 miembro)
+            self.lbl_group_title.setVisible(False)
+            self.group_wrapper_widget.setVisible(False)
+            return
+        
+        # 2. Mostrar título del grupo
+        self.lbl_group_title.setText(f"Grupo: {group_name}")
+        self.lbl_group_title.setVisible(True)
+        
+        # 3. Crear tags para cada miembro del grupo
+        for m in members:
+            tag = QLabel(m.get("nombre", ""))
+            tag.setObjectName("GroupTagLabel")
+            tag.setStyleSheet("""
+                QLabel#GroupTagLabel {
+                    border: 1px solid #CCCCCC;
+                    border-radius: 10px;
+                    padding: 3px 8px;
+                    background-color: #F5F5F5;
+                    font-size: 9pt;
+                    color: #333333;
+                }
+            """)
+            self.group_tags_layout.addWidget(tag)
+        
+        # Agregar spacer para empujar tags a la izquierda
+        self.group_tags_layout.addStretch()
+        
+        self.group_wrapper_widget.setVisible(True)
     
     def update_info_basica(self, patrimonio: str, trm_cop_usd: str, trm_cop_eur: str) -> None:
         """

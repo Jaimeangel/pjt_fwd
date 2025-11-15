@@ -250,30 +250,6 @@ class ForwardController:
         else:
             print(f"[ForwardController] Combo de contrapartes actualizado: {len(catalog)} opciones")
 
-    def _resolve_group_context(self, nit: str) -> tuple[Optional[str], List[str]]:
-        """
-        Determina el grupo conectado y los NITs pertenecientes a ese grupo (normalizados).
-        """
-        nit_norm = normalize_nit(nit)
-        members: List[str] = [nit_norm] if nit_norm else [nit]
-        group_name: Optional[str] = None
-        
-        if self._settings_model and not self._settings_model.lineas_credito_df.empty and nit_norm:
-            group_name = self._settings_model.get_group_for_nit(nit_norm)
-            if group_name:
-                members_info = self._settings_model.get_counterparties_by_group(group_name) or []
-                normalized_members = [
-                    normalize_nit(member.get("nit"))
-                    for member in members_info
-                    if member.get("nit")
-                ]
-                normalized_members = [m for m in normalized_members if m]
-                if normalized_members:
-                    members = normalized_members
-                elif nit_norm not in members:
-                    members.append(nit_norm)
-        return group_name, members
-    
     def _get_lll_cop(self) -> float:
         """
         Devuelve el valor de LLL en COP que ya está calculado y mostrado
@@ -328,8 +304,21 @@ class ForwardController:
         if self._data_model:
             self._data_model.reset_simulation_state()
         
-        # Identificar grupo conectado y miembros
-        group_name, group_members = self._resolve_group_context(nit)
+        # Identificar grupo conectado y miembros desde Settings
+        group_name = None
+        group_members = []
+        has_real_group = False
+        
+        if self._settings_model:
+            members_list = self._settings_model.get_group_members_by_nit(nit)
+            if members_list and len(members_list) > 1:
+                # Grupo real (más de una contraparte)
+                has_real_group = True
+                group_name = members_list[0].get("grupo", "")
+                group_members = [m["nit"] for m in members_list]
+                print(f"   → Grupo detectado: '{group_name}' con {len(group_members)} contrapartes")
+            else:
+                print(f"   → Sin grupo o grupo con solo 1 contraparte")
         
         # 2) Obtener LCA desde Settings por NIT (MM → COP reales ×1e6)
         lca_real = None
@@ -359,18 +348,22 @@ class ForwardController:
             self._data_model.set_current_client(nit, nombre)
             self._data_model.set_current_group(group_name, group_members)
             
-            # Calcular exposiciones de contraparte y grupo
+            # Calcular exposición de contraparte (siempre)
             df_cte = self._data_model.get_operations_df_for_nit(nit)
-            df_group = self._data_model.get_operations_df_for_nits(group_members)
-            
             exposure_cte = calculate_exposure_from_operations(df_cte)
-            exposure_group = calculate_exposure_from_operations(df_group)
-            
             outstanding = exposure_cte.get("outstanding", 0.0)
-            group_outstanding = exposure_group.get("outstanding", 0.0)
             
             print(f"   → Outstanding Contraparte: $ {outstanding:,.0f}")
-            print(f"   → Outstanding Grupo: $ {group_outstanding:,.0f}")
+            
+            # Calcular exposición de grupo SOLO si has_real_group == True
+            group_outstanding = 0.0
+            if has_real_group:
+                df_group = self._data_model.get_operations_df_for_nits(group_members)
+                exposure_group = calculate_exposure_from_operations(df_group)
+                group_outstanding = exposure_group.get("outstanding", 0.0)
+                print(f"   → Outstanding Grupo: $ {group_outstanding:,.0f}")
+            else:
+                print(f"   → Sin grupo real, exposición grupo = 0")
             
             # Setear exposiciones base (sin simulación)
             self._data_model.set_exposure_counterparty(outstanding, outstanding)
@@ -415,6 +408,13 @@ class ForwardController:
                 )
             
             self._view.set_credit_params(linea=linea_display, limite=limite_display)
+        
+        # Actualizar UI de grupo (tags bajo el bloque Cliente)
+        if self._view:
+            members_for_ui = []
+            if has_real_group and self._settings_model:
+                members_for_ui = self._settings_model.get_group_members_by_nit(nit)
+            self._view.update_group_members(group_name, members_for_ui)
         
         # 6) Recalcular exposición sin simulación
         self._refresh_exposure(lca_real, outstanding, outstanding)

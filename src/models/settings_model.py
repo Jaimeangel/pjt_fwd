@@ -402,4 +402,29 @@ class SettingsModel(QObject):
                 "grupo": row.get("Grupo Conectado de Contrapartes", ""),
             })
         return result
+    
+    def get_group_members_by_nit(self, nit_norm: str) -> List[Dict[str, str]]:
+        """
+        Devuelve todas las contrapartes del mismo grupo al que pertenece el NIT dado,
+        incluyendo la contraparte actual.
+        
+        Args:
+            nit_norm: NIT normalizado de la contraparte
+        
+        Returns:
+            Lista de dicts con 'nit', 'nombre', 'grupo' para cada miembro del grupo.
+            Si no hay grupo o el grupo tiene solo 1 miembro, retorna lista vacía o
+            lista con solo la contraparte actual.
+        """
+        # Obtener el grupo del NIT
+        grupo = self.get_group_for_nit(nit_norm)
+        
+        if not grupo:
+            # Sin grupo asignado, retornar lista vacía
+            return []
+        
+        # Obtener todos los miembros del grupo
+        members = self.get_counterparties_by_group(grupo)
+        
+        return members
 
