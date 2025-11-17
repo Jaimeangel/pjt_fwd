@@ -83,7 +83,6 @@ class ForwardView(QWidget):
         self.fig_consumo2 = None
         self.ax_consumo2 = None
         self.canvas_consumo2 = None
-        self.cbZoomConsumo = None  # Checkbox para activar zoom en consumo
         
         self.btnAddSim = None
         self.btnDelSim = None
@@ -476,19 +475,6 @@ class ForwardView(QWidget):
         # Card E: Consumo de línea
         card_e = self._create_card("Consumo de línea")
         card_e_layout = QVBoxLayout()
-        
-        # Header con checkbox para zoom
-        header_layout = QHBoxLayout()
-        header_layout.setContentsMargins(0, 0, 0, 5)
-        
-        self.cbZoomConsumo = QCheckBox("Zoom consumo")
-        self.cbZoomConsumo.setChecked(False)
-        self.cbZoomConsumo.setToolTip("Activar para enfocar la vista en el consumo actual")
-        
-        header_layout.addStretch()
-        header_layout.addWidget(self.cbZoomConsumo)
-        
-        card_e_layout.addLayout(header_layout)
         
         # Crear figura de matplotlib (dual chart: LCA + Consumo)
         self.fig_consumo2 = Figure(figsize=(5.2, 2.6), tight_layout=True)
@@ -1121,19 +1107,16 @@ class ForwardView(QWidget):
             total_con_simulacion,
         )
     
-    def update_consumo_dual_chart(self, lca_total: float | None, outstanding: float | None = None, outstanding_with_sim: float | None = None, zoom: bool = False) -> None:
+    def update_consumo_dual_chart(self, lca_total: float | None, outstanding: float | None = None, outstanding_with_sim: float | None = None) -> None:
         """
         Actualiza la gráfica de consumo vs línea de crédito aprobada.
         
-        Modos de visualización:
-        - Normal (zoom=False): Muestra dos barras (LCA gris + Consumo apilado verde)
-        - Zoom (zoom=True): Muestra solo consumo apilado + LCA como línea de referencia, eje Y ajustado al consumo
+        Muestra dos barras: LCA gris + Consumo apilado verde.
         
         Args:
             lca_total: Línea de crédito aprobada total en COP
             outstanding: Outstanding actual en COP
             outstanding_with_sim: Outstanding + simulación en COP
-            zoom: Si True, activa modo zoom enfocado en consumo
         """
         if not self.ax_consumo2 or not self.canvas_consumo2:
             return
@@ -1155,46 +1138,20 @@ class ForwardView(QWidget):
         # Incremento por simulación (si hay)
         sim_extra = max(out_sim - out_now, 0)
         
-        if not zoom:
-            # ===== MODO NORMAL =====
-            # Barra 1: Línea de crédito aprobada
-            if lca > 0:
-                ax.bar(
-                    ["Línea aprobada"], [lca],
-                    color="#d0d0d0", edgecolor="#9e9e9e",
-                    label="Línea aprobada",
-                    width=0.5
-                )
-            
-            # Barra 2: Consumo (apilada)
-            tiene_consumo = (out_now > 0 or out_sim > 0)
-            
-            if tiene_consumo:
-                # Verde oscuro: Outstanding actual
-                if out_now > 0:
-                    ax.bar(
-                        ["Consumo"], [out_now],
-                        color="#2e7d32", edgecolor="#1b5e20",
-                        label="Outstanding",
-                        width=0.5
-                    )
-                
-                # Verde claro: Incremento por simulación
-                if sim_extra > 0:
-                    ax.bar(
-                        ["Consumo"], [sim_extra],
-                        bottom=[out_now],
-                        color="#81c784", edgecolor="#66bb6a",
-                        label="Simulación",
-                        width=0.5
-                    )
-            
-            # Limitar el eje Y con margen superior
-            ymax = max(lca, out_sim, out_now) * 1.10 if max(lca, out_sim, out_now) > 0 else 1
+        # Barra 1: Línea de crédito aprobada
+        if lca > 0:
+            ax.bar(
+                ["Línea aprobada"], [lca],
+                color="#d0d0d0", edgecolor="#9e9e9e",
+                label="Línea aprobada",
+                width=0.5
+            )
         
-        else:
-            # ===== MODO ZOOM CONSUMO =====
-            # Solo mostrar barra de Consumo apilada
+        # Barra 2: Consumo (apilada)
+        tiene_consumo = (out_now > 0 or out_sim > 0)
+        
+        if tiene_consumo:
+            # Verde oscuro: Outstanding actual
             if out_now > 0:
                 ax.bar(
                     ["Consumo"], [out_now],
@@ -1212,15 +1169,11 @@ class ForwardView(QWidget):
                     label="Simulación",
                     width=0.5
                 )
-            
-            # LCA como línea horizontal de referencia
-            if lca > 0:
-                ax.axhline(lca, linestyle="--", linewidth=1.2, color="#9e9e9e", label="Línea aprobada")
-            
-            # Limitar el eje Y enfocado en consumo (con margen superior del 15%)
-            ymax = max(out_sim, out_now) * 1.15 if max(out_sim, out_now) > 0 else 1
         
-        # === Ejes y formato (común para ambos modos) ===
+        # Limitar el eje Y con margen superior
+        ymax = max(lca, out_sim, out_now) * 1.10 if max(lca, out_sim, out_now) > 0 else 1
+        
+        # === Ejes y formato ===
         ax.ticklabel_format(style="plain", axis="y", useOffset=False)
         ax.yaxis.set_major_formatter(FuncFormatter(lambda x, pos: f"${x:,.0f}"))
         ax.set_ylim(0, ymax)
@@ -1229,13 +1182,13 @@ class ForwardView(QWidget):
         ax.grid(axis="y", linestyle=":", linewidth=0.6, alpha=0.6)
         ax.tick_params(axis='both', which='major', labelsize=9)
         
-        # Leyenda
-        ax.legend(loc="upper right", fontsize=8)
+        # Ocultar leyenda
+        legend = ax.legend(loc="upper right", fontsize=8)
+        legend.set_visible(False)
         
         self.canvas_consumo2.draw_idle()
         
-        modo = "ZOOM" if zoom else "NORMAL"
-        print(f"[ForwardView] Gráfica actualizada ({modo}): LCA=$ {lca:,.0f}, Outstanding=$ {out_now:,.0f}, Outstanding+Sim=$ {out_sim:,.0f}")
+        print(f"[ForwardView] Gráfica actualizada: LCA=$ {lca:,.0f}, Outstanding=$ {out_now:,.0f}, Outstanding+Sim=$ {out_sim:,.0f}")
     
     def update_chart(self, data: Dict[str, Any]) -> None:
         """

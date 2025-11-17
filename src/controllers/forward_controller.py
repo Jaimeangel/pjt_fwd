@@ -125,14 +125,6 @@ class ForwardController:
             self._view.simulate_selected_requested.connect(self.simulate_selected_row)
             self._view.save_simulations_requested.connect(self.save_simulations)
             
-            # Conectar checkbox de zoom en gráfica de consumo
-            if hasattr(self._view, 'cbZoomConsumo') and self._view.cbZoomConsumo:
-                try:
-                    self._view.cbZoomConsumo.toggled.disconnect(self.refresh_exposure_block)
-                except (TypeError, RuntimeError):
-                    pass
-                self._view.cbZoomConsumo.toggled.connect(self.refresh_exposure_block)
-            
             # Conectar combo de clientes por índice (no por texto)
             if hasattr(self._view, 'cmbClientes') and self._view.cmbClientes:
                 try:
@@ -430,11 +422,7 @@ class ForwardController:
             self._view.update_exposure_values(0.0, 0.0, 0.0, 0.0)
             self._view.update_lll_availability(0.0, 0.0, 0.0, 0.0)
             
-            zoom = False
-            if hasattr(self._view, 'cbZoomConsumo') and self._view.cbZoomConsumo:
-                zoom = self._view.cbZoomConsumo.isChecked()
-            
-            self._view.update_consumo_dual_chart(0.0, 0.0, 0.0, zoom=zoom)
+            self._view.update_consumo_dual_chart(0.0, 0.0, 0.0)
             
             if self._operations_table_model:
                 self._operations_table_model.set_operations([])
@@ -471,15 +459,10 @@ class ForwardController:
                 print(f"      Contraparte: $ {disp_cte_cop:,.0f} ({disp_cte_pct:.2f}%)")
                 print(f"      Grupo: $ {disp_grp_cop:,.0f} ({disp_grp_pct:.2f}%)")
             
-            zoom = False
-            if hasattr(self._view, 'cbZoomConsumo') and self._view.cbZoomConsumo:
-                zoom = self._view.cbZoomConsumo.isChecked()
-            
             self._view.update_consumo_dual_chart(
                 lca_total=lca_real or 0.0,
                 outstanding=out_cte,
-                outstanding_with_sim=out_cte_sim,
-                zoom=zoom
+                outstanding_with_sim=out_cte_sim
             )
     
     def _refresh_info_basica(self, _=None):
@@ -578,16 +561,10 @@ class ForwardController:
         self._view.update_lll_availability(disp_cte_cop, disp_cte_pct, disp_grp_cop, disp_grp_pct)
         
         # Actualizar gráfica de consumo de línea (LCA + consumo apilado)
-        # Obtener estado del checkbox de zoom
-        zoom = False
-        if hasattr(self._view, 'cbZoomConsumo') and self._view.cbZoomConsumo:
-            zoom = self._view.cbZoomConsumo.isChecked()
-        
         self._view.update_consumo_dual_chart(
             lca_total=LCA,
             outstanding=out_cte,
-            outstanding_with_sim=out_cte_sim,
-            zoom=zoom
+            outstanding_with_sim=out_cte_sim
         )
         
         print(f"[ForwardController] Bloque de exposición actualizado:")
