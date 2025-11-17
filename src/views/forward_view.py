@@ -1078,14 +1078,35 @@ class ForwardView(QWidget):
         disp_grp_cop: Optional[float],
         disp_grp_pct: Optional[float],
     ) -> None:
-        """Actualiza los labels de disponibilidad LLL para contraparte y grupo."""
+        """
+        Actualiza los labels de disponibilidad LLL para contraparte y grupo.
+        
+        El porcentaje se muestra en:
+        - Verde si >= 0
+        - Rojo si < 0
+        """
         cop_cte = self._format_cop(disp_cte_cop)
         pct_cte = self._format_pct(disp_cte_pct)
         cop_grp = self._format_cop(disp_grp_cop)
         pct_grp = self._format_pct(disp_grp_pct)
         
-        self.lbl_disp_lll_cte_value.setText(f"{cop_cte}  {pct_cte}")
-        self.lbl_disp_lll_grp_value.setText(f"{cop_grp}  {pct_grp}")
+        # Determinar color para porcentaje de contraparte
+        color_cte = "green" if disp_cte_pct is not None and disp_cte_pct >= 0 else "red"
+        
+        # Determinar color para porcentaje de grupo
+        color_grp = "green" if disp_grp_pct is not None and disp_grp_pct >= 0 else "red"
+        
+        # Construir texto con COP normal y porcentaje coloreado
+        self.lbl_disp_lll_cte_value.setText(
+            f'{cop_cte}  <span style="color:{color_cte};">{pct_cte}</span>'
+        )
+        self.lbl_disp_lll_grp_value.setText(
+            f'{cop_grp}  <span style="color:{color_grp};">{pct_grp}</span>'
+        )
+        
+        # Asegurar que los labels interpreten HTML
+        self.lbl_disp_lll_cte_value.setTextFormat(Qt.RichText)
+        self.lbl_disp_lll_grp_value.setTextFormat(Qt.RichText)
     
     def show_exposure(self, outstanding: float = None, total_con_simulacion: float = None,
                      disponibilidad: float = None) -> None:
