@@ -21,7 +21,7 @@ class SimulationsTableModel(QAbstractTableModel):
     HEADERS = [
         "Cliente",
         "Punta Cli",
-        "Punta Emp",
+        "Punta BNP",
         "Nominal USD",
         "Fec Sim",
         "Fec Venc",
@@ -306,13 +306,13 @@ class SimulationsTableModel(QAbstractTableModel):
         No redondea internamente; solo formatea en display.
         
         Fórmulas:
-        - Forward = Spot + Puntos
+        - Forward = Spot + Puntos (campo independiente, puede diferir en simulaciones)
         - df = 1 + (IBR%/100) * (Plazo/360)
-        - Si Punta Cliente = "Compra":
+        - Si Punta Cliente = "Compra" (Empresa VENDE):
             Derecho = (Spot + Puntos)/df * Nominal
-            Obligación = Spot/df * Nominal
-        - Si Punta Cliente = "Venta":
-            Derecho = Spot/df * Nominal
+            Obligación = Tasa Forward/df * Nominal
+        - Si Punta Cliente = "Venta" (Empresa COMPRA):
+            Derecho = Tasa Forward/df * Nominal
             Obligación = (Spot + Puntos)/df * Nominal
         - Fair Value = Derecho - Obligación
         
@@ -342,9 +342,17 @@ class SimulationsTableModel(QAbstractTableModel):
         plazo = row_data.get("plazo")
         tasa_ibr_decimal = row_data.get("tasa_ibr")  # Ya está en decimal
         
-        # Calcular Tasa Forward
-        tasa_fwd = spot + puntos
-        row_data["tasa_fwd"] = tasa_fwd
+        # Leer o calcular Tasa Forward
+        # IMPORTANTE: No asumir que tasa_fwd = spot + puntos
+        # Si ya existe un valor en row_data, respetarlo
+        tasa_fwd = row_data.get("tasa_fwd")
+        if tasa_fwd is None or tasa_fwd == 0:
+            # Si no hay valor, calcular como spot + puntos
+            tasa_fwd = spot + puntos
+            row_data["tasa_fwd"] = tasa_fwd
+        else:
+            # Usar el valor existente (puede ser diferente de spot + puntos)
+            tasa_fwd = float(tasa_fwd)
         
         # Validar insumos para cálculo de df
         if plazo is None or tasa_ibr_decimal is None or plazo < 0:
@@ -372,16 +380,16 @@ class SimulationsTableModel(QAbstractTableModel):
                 # Fórmulas correctas desde perspectiva EMPRESA:
                 if punta_empresa == "Compra":
                     # Si EMPRESA COMPRA USD (cliente VENDE):
-                    # - Derecho = USD que recibirá, valorado a spot de hoy
-                    # - Obligación = COP que pagará a tasa forward
-                    derecho = spot / df * nominal
+                    # - Derecho = USD que recibirá, valorado a tasa forward
+                    # - Obligación = COP que pagará a tasa spot + puntos forward mercado
+                    derecho = tasa_fwd / df * nominal
                     obligacion = (spot + puntos) / df * nominal
                 else:  # punta_empresa == "Venta"
                     # Si EMPRESA VENDE USD (cliente COMPRA):
-                    # - Derecho = COP que recibirá a tasa forward
-                    # - Obligación = USD que entregará, valorado a spot de hoy
+                    # - Derecho = COP que recibirá a tasa spot + puntos forward mercado
+                    # - Obligación = USD que entregará, valorado a tasa forward
                     derecho = (spot + puntos) / df * nominal
-                    obligacion = spot / df * nominal
+                    obligacion = tasa_fwd / df * nominal
                 
                 # Fair Value = Derecho - Obligación (desde perspectiva empresa)
                 # Si empresa COMPRA y puntos > 0 → FV < 0 (paga más por el USD)

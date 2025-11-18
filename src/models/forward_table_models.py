@@ -209,7 +209,7 @@ class SimulationsTableModel(QAbstractTableModel):
     COLUMNS = [
         "NIT",
         "Punta Cliente",
-        "Punta Empresa",
+        "Punta BNP",
         "Nominal USD",
         "Fecha Sim",
         "Fecha Venc",
