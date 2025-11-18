@@ -258,14 +258,18 @@ class SimulationsTableModel(QAbstractTableModel):
                 spot = float(value) if value else 0.0
                 if spot >= 0:
                     row_data["spot"] = spot
-                    # Recalcular todo (incluye Tasa Forward, Derecho, Obligación, Fair Value)
+                    # ⚠️ IMPORTANTE: Actualizar Tasa Forward automáticamente
+                    self._recalculate_tasa_fwd(index.row())
+                    # Recalcular todo (Derecho, Obligación, Fair Value)
                     self._recalc_row(index.row())
                 else:
                     return False
             elif col == 8:  # Puntos
                 puntos = float(value) if value else 0.0
                 row_data["puntos"] = puntos
-                # Recalcular todo (incluye Tasa Forward, Derecho, Obligación, Fair Value)
+                # ⚠️ IMPORTANTE: Actualizar Tasa Forward automáticamente
+                self._recalculate_tasa_fwd(index.row())
+                # Recalcular todo (Derecho, Obligación, Fair Value)
                 self._recalc_row(index.row())
             else:
                 return False
