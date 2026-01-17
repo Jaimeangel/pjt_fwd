@@ -1279,8 +1279,29 @@ class ForwardController:
         df_group = self._data_model.get_operations_df_for_nits(group_members) if self._data_model else pd.DataFrame()
         df_simulated_ops = pd.DataFrame(simulated_ops) if simulated_ops else pd.DataFrame()
         
-        df_cte_sim = pd.concat([df_cte, df_simulated_ops], ignore_index=True) if not df_simulated_ops.empty else df_cte.copy()
-        df_group_sim = pd.concat([df_group, df_simulated_ops], ignore_index=True) if not df_simulated_ops.empty else df_group.copy()
+        # 🔹 Construir universo de operaciones (vigentes + simuladas)
+        # IMPORTANTE: Funciona incluso cuando vigentes=0
+        if df_simulated_ops.empty:
+            # Sin operaciones simuladas, usar solo vigentes
+            df_cte_sim = df_cte.copy()
+            df_group_sim = df_group.copy()
+        elif df_cte.empty:
+            # Sin operaciones vigentes, usar SOLO simuladas (este es el caso del bug)
+            df_cte_sim = df_simulated_ops.copy()
+            df_group_sim = df_simulated_ops.copy()
+            print(f"   ⚠️  NO hay operaciones vigentes - universo = SOLO simuladas ({len(df_simulated_ops)} ops)")
+        else:
+            # Hay vigentes Y simuladas, concatenar ambas
+            df_cte_sim = pd.concat([df_cte, df_simulated_ops], ignore_index=True)
+            df_group_sim = pd.concat([df_group, df_simulated_ops], ignore_index=True)
+        
+        # Log para debugging
+        print(f"\n   📊 Universo de operaciones:")
+        print(f"      Vigentes contraparte: {len(df_cte)}")
+        print(f"      Vigentes grupo: {len(df_group)}")
+        print(f"      Simuladas: {len(df_simulated_ops)}")
+        print(f"      Universe contraparte: {len(df_cte_sim)}")
+        print(f"      Universe grupo: {len(df_group_sim)}")
         
         exposure_cte_base = calculate_exposure_from_operations(df_cte)
         exposure_group_base = calculate_exposure_from_operations(df_group)
@@ -1291,6 +1312,12 @@ class ForwardController:
         outstanding_with_sim = exposure_cte_sim.get("outstanding", 0.0)
         group_outstanding = exposure_group_base.get("outstanding", 0.0)
         group_outstanding_sim = exposure_group_sim.get("outstanding", 0.0)
+        
+        print(f"\n   💰 Exposición calculada:")
+        print(f"      Outstanding base: $ {outstanding:,.2f}")
+        print(f"      Outstanding + sim: $ {outstanding_with_sim:,.2f}")
+        print(f"      Grupo base: $ {group_outstanding:,.2f}")
+        print(f"      Grupo + sim: $ {group_outstanding_sim:,.2f}")
         lll_cop = self._get_lll_cop()
         disp_cte_cop = lll_cop - outstanding_with_sim
         disp_grp_cop = lll_cop - group_outstanding_sim
