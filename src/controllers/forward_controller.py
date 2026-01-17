@@ -143,7 +143,7 @@ class ForwardController:
             print("[ForwardController] IBR resolver configurado en modelo de simulaciones")
     
     def _connect_settings_signals(self):
-        """Conecta señales del SettingsModel para actualización automática de TRM, patrimonio y líneas de crédito."""
+        """Conecta señales del SettingsModel para actualización automática de TRM, patrimonio y contrapartes."""
         if self._settings_model:
             try:
                 self._settings_model.trm_cop_usdChanged.disconnect(self._refresh_info_basica)
@@ -181,7 +181,7 @@ class ForwardController:
                 pass
             self._settings_model.counterpartiesChanged.connect(self._reload_counterparties_from_settings)
             
-            print("[ForwardController] Señales de SettingsModel conectadas para actualización automática de TRM, patrimonio, colchón, líneas de crédito y contrapartes")
+        print("[ForwardController] Señales de SettingsModel conectadas para actualización automática de TRM, patrimonio, colchón y contrapartes")
     
     def _connect_simulations_model_signals(self):
         """Conecta señales del modelo de simulaciones para habilitar/deshabilitar el botón 'Simular'."""
@@ -224,10 +224,10 @@ class ForwardController:
     
     def _reload_counterparties_from_settings(self):
         """
-        Recarga el combo de contrapartes desde el catálogo de Líneas de Crédito (Settings).
+        Recarga el combo de contrapartes desde el catálogo de Información de contrapartes (Settings).
         
         Este método se ejecuta automáticamente cuando:
-        - Se carga/actualiza el CSV de Líneas de Crédito en Configuraciones
+        - Se carga/actualiza el CSV de Información de contrapartes en Configuraciones
         - Cambia el catálogo de contrapartes
         """
         if not self._view or not self._settings_model:
@@ -238,7 +238,7 @@ class ForwardController:
         
         # Si no hay catálogo, solo deshabilitar el combo (sin pop-up)
         if not catalog:
-            print("[ForwardController] ⚠️ No hay líneas de crédito cargadas. Combo deshabilitado.")
+            print("[ForwardController] ⚠️ No hay contrapartes cargadas. Combo deshabilitado.")
         else:
             print(f"[ForwardController] Combo de contrapartes actualizado: {len(catalog)} opciones")
 
@@ -312,17 +312,8 @@ class ForwardController:
             else:
                 print(f"   → Sin grupo o grupo con solo 1 contraparte")
         
-        # 2) Obtener LCA desde Settings por NIT (MM → COP reales ×1e6)
+        # 2) LCA no viene de Configuraciones (solo catálogo de contrapartes)
         lca_real = None
-        if self._settings_model:
-            catalog = {c["nit"]: c for c in self._settings_model.get_counterparties()}
-            cinfo = catalog.get(nit)
-            if cinfo and cinfo.get("cop_mm") is not None:
-                try:
-                    lca_real = float(cinfo["cop_mm"]) * 1_000_000.0
-                    print(f"   → LCA desde Settings: {cinfo.get('cop_mm'):,.3f} MM → $ {lca_real:,.0f} COP")
-                except (ValueError, TypeError):
-                    pass
         
         # 3) Buscar datos en 415 por NIT normalizado y calcular exposiciones
         # IMPORTANTE: Siempre calcular exposiciones, incluso si no hay operaciones (outstanding = 0)
@@ -498,34 +489,8 @@ class ForwardController:
         
         # Obtener NIT del cliente actual
         nit = self._data_model.current_client_nit()
-        df = self._settings_model.lineas_credito_df
-        
-        # Valores por defecto
-        LCA = None
-        
-        # Obtener LCA de la tabla de líneas de crédito
-        if nit and df is not None and not df.empty:
-            # Normalizar NIT usando la utilidad
-            from src.utils.ids import normalize_nit
-            nit_norm = normalize_nit(nit)
-            
-            # Buscar por NIT_norm si existe, sino usar NIT normalizado en búsqueda
-            if "NIT_norm" in df.columns:
-                row = df[df["NIT_norm"] == nit_norm]
-            else:
-                row = df[df["NIT"].astype(str).apply(normalize_nit) == nit_norm]
-            
-            if not row.empty:
-                # Convertir de MM (millones) a COP reales (* 1,000,000)
-                if "COP (MM)" in row.columns:
-                    cop_mm = row["COP (MM)"].iloc[0]
-                    try:
-                        import pandas as pd
-                        if pd.notna(cop_mm):
-                            LCA = float(cop_mm) * 1_000_000.0
-                            print(f"[ForwardController] LCA MM={cop_mm:,.3f} → LCA real={LCA:,.0f} COP")
-                    except (ValueError, TypeError):
-                        pass
+        # Valores por defecto (no hay LCA en el catálogo de contrapartes)
+        LCA = 0.0
         
         # Obtener LLL GLOBAL (25% del Patrimonio técnico vigente con colchón de seguridad)
         LLL = self._settings_model.lll_cop()
@@ -801,7 +766,7 @@ class ForwardController:
                 print(f"      ✓ Exposición total: $ {total_exposure:,.2f}")
                 
                 # NOTA: Ya no actualizamos el combo desde el 415
-                # El combo se puebla únicamente desde Settings (Líneas de Crédito)
+            # El combo se puebla únicamente desde Settings (Información de contrapartes)
                 # El 415 solo proporciona Outstanding y operaciones para join
                 # if self._view:
                 #     nombres_clientes = self._data_model.get_client_names()
@@ -1033,11 +998,11 @@ class ForwardController:
             if self._data_model:
                 self._data_model.set_current_group(group_name, group_members)
             
-            # 🔹 Buscar cliente en líneas de crédito (SettingsModel) - SIN valores por defecto
+            # 🔹 Buscar cliente en contrapartes (SettingsModel) - SIN valores por defecto
             if self._settings_model:
-                # Validar que hay líneas de crédito cargadas
+                # Validar que hay contrapartes cargadas
                 if self._settings_model.lineas_credito_df.empty:
-                    print(f"   ⚠️  No hay líneas de crédito cargadas en SettingsModel")
+                    print(f"   ⚠️  No hay contrapartes cargadas en SettingsModel")
                     # Resetear límites en el modelo
                     if self._data_model:
                         self._data_model.set_credit_limits(
@@ -1046,19 +1011,14 @@ class ForwardController:
                         )
                     if self._view:
                         self._view.set_credit_params(linea="—", limite="—")
-                        self._view.notify("Cargue primero 'Líneas de crédito' en Configuraciones.", "warning")
-                    return  # No continuar con operaciones si no hay líneas de crédito
+                        self._view.notify("Cargue primero 'Información de contrapartes' en Configuraciones.", "warning")
+                    return  # No continuar con operaciones si no hay contrapartes
                 
                 cliente_info = self._settings_model.get_linea_credito_por_nit(nit)
                 
                 if cliente_info:
-                    # Cliente encontrado en líneas de crédito
-                    # COP (MM) es la línea aprobada en millones, convertir a COP reales
-                    linea_cop_mm = float(cliente_info.get('linea_cop_mm', 0.0))
-                    linea_credito_cop_real = linea_cop_mm * 1_000_000.0
-                    
+                    # Cliente encontrado en contrapartes
                     print(f"   → Datos del cliente (desde SettingsModel):")
-                    print(f"      Línea de crédito MM: {linea_cop_mm:,.3f} → COP real: $ {linea_credito_cop_real:,.0f}")
                     
                     # 🔹 Obtener LLL GLOBAL (25% del Patrimonio técnico vigente)
                     lll_global = self._settings_model.lll_cop()
@@ -1068,20 +1028,20 @@ class ForwardController:
                     # 🔹 Guardar límites en el modelo para uso posterior
                     if self._data_model:
                         self._data_model.set_credit_limits(
-                            linea_credito_aprobada_cop=linea_credito_cop_real,
+                            linea_credito_aprobada_cop=0.0,
                             lll_cop=lll_global or 0.0
                         )
                     
-                    # 🔹 Actualizar vista con línea de crédito y LLL global
+                    # 🔹 Actualizar vista con LLL global (sin LCA)
                     if self._view:
                         limite_display = f"$ {lll_global:,.0f}" if lll_global else "—"
                         self._view.set_credit_params(
-                            linea=f"$ {linea_credito_cop_real:,.0f}",
+                            linea="—",
                             limite=limite_display
                         )
                 else:
-                    # Cliente NO encontrado en líneas de crédito
-                    print(f"   ⚠️  Cliente con NIT {nit} no encontrado en líneas de crédito.")
+                    # Cliente NO encontrado en contrapartes
+                    print(f"   ⚠️  Cliente con NIT {nit} no encontrado en contrapartes.")
                     
                     # 🔹 Obtener LLL GLOBAL (independiente de si se encontró el cliente)
                     lll_global = self._settings_model.lll_cop()

@@ -103,10 +103,10 @@ class ForwardView(QWidget):
         Conecta las señales del SettingsModel para actualización en tiempo real.
         
         Nota: Patrimonio, TRM y Colchón fueron eliminados del modelo global.
-        Ahora estos valores son por contraparte y vienen del CSV de líneas de crédito.
+        Ahora estos valores son por contraparte y vienen del CSV de contrapartes.
         """
         if self._settings_model:
-            # Suscribirse a cambios en las líneas de crédito (para futuras actualizaciones)
+            # Suscribirse a cambios en contrapartes (para futuras actualizaciones)
             # self._settings_model.lineasCreditoChanged.connect(...)
             
             print("[ForwardView] Conectado a SettingsModel")
@@ -790,16 +790,16 @@ class ForwardView(QWidget):
     
     def populate_counterparties(self, items: List[Dict[str, Any]]) -> None:
         """
-        Puebla el combo de contrapartes desde el catálogo de Líneas de Crédito.
+        Puebla el combo de contrapartes desde el catálogo de Información de contrapartes.
         
         Args:
             items: Lista de diccionarios con estructura:
-                   [{nit, nombre, grupo, eur_mm, cop_mm}, ...]
+                   [{nit, nombre, grupo}, ...]
         
         Notes:
             - El texto visible es el nombre de la contraparte
             - El userData es el NIT normalizado
-            - Fuente: Configuraciones → Líneas de Crédito Vigentes
+            - Fuente: Configuraciones → Información de contrapartes
         """
         print(f"[ForwardView] populate_counterparties: {len(items)} contrapartes desde Settings")
         
@@ -819,7 +819,7 @@ class ForwardView(QWidget):
         # NO seleccionar automáticamente ninguna contraparte
         self.cmbClientes.setCurrentIndex(-1)
         self.cmbClientes.setPlaceholderText("Seleccione contraparte")
-        self.cmbClientes.setToolTip("Fuente: Líneas de crédito (Configuraciones)")
+        self.cmbClientes.setToolTip("Fuente: Información de contrapartes (Configuraciones)")
         
         # Habilitar/deshabilitar según haya contrapartes
         self.cmbClientes.setEnabled(bool(items))

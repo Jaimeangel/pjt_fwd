@@ -21,7 +21,7 @@ class SettingsView(QWidget):
     Responsabilidades:
     - Mostrar parámetros generales (Patrimonio, TRM)
     - Mostrar parámetros normativos (factores de riesgo)
-    - Gestionar líneas de crédito vigentes
+    - Gestionar información de contrapartes
     """
     
     # Señales personalizadas
@@ -40,7 +40,7 @@ class SettingsView(QWidget):
         # Referencia al modelo de configuración compartido
         self._settings_model = settings_model
         
-        # Almacenar DataFrame de líneas de crédito
+        # Almacenar DataFrame de contrapartes
         self.df_lineas_credito = None
         
         self._setup_ui()
@@ -75,7 +75,7 @@ class SettingsView(QWidget):
         group_normativos = self._create_parametros_normativos()
         main_layout.addWidget(group_normativos)
         
-        # === 3. LÍNEAS DE CRÉDITO VIGENTES ===
+        # === 3. INFORMACIÓN DE CONTRAPARTES ===
         group_lineas = self._create_lineas_credito()
         main_layout.addWidget(group_lineas)
         
@@ -197,12 +197,12 @@ class SettingsView(QWidget):
     
     def _create_lineas_credito(self) -> QGroupBox:
         """
-        Crea el bloque de Líneas de Crédito Vigentes.
+        Crea el bloque de Información de contrapartes.
         
         Returns:
             QGroupBox con tabla y botón de carga
         """
-        group = QGroupBox("Líneas de Crédito Vigentes")
+        group = QGroupBox("Información de contrapartes")
         layout = QVBoxLayout(group)
         layout.setSpacing(8)
         
@@ -216,7 +216,7 @@ class SettingsView(QWidget):
         
         layout.addLayout(header_layout)
         
-        # Tabla de líneas de crédito (QTableWidget para manejo directo)
+        # Tabla de contrapartes (QTableWidget para manejo directo)
         self.tblLineasCredito = QTableWidget()
         self.tblLineasCredito.setObjectName("tblLineasCredito")
         
@@ -244,24 +244,22 @@ class SettingsView(QWidget):
     
     def cargar_csv_lineas_credito(self):
         """
-        Carga el archivo CSV de líneas de crédito y muestra los datos en la tabla.
+        Carga el archivo CSV de contrapartes y muestra los datos en la tabla.
         Versión robusta que soporta múltiples codificaciones y variaciones en encabezados.
         
         Reglas:
         - CSV delimitado por ';'
-        - Columnas requeridas: NIT, Contraparte, Grupo Conectado de Contrapartes, EUR (MM)
-        - NIT: eliminar guiones "-"
-        - EUR (MM): valor en millones (MM), se limpia y normaliza
-        - COP (MM): NO se lee del CSV, es un valor DERIVADO que se calcula con TRM COP/EUR
+        - Columnas requeridas: NIT, Contraparte, Grupo Conectado de Contrapartes
+        - NIT: eliminar guiones "-" y espacios
         - Soporta UTF-8, UTF-8 con BOM, y Latin-1
         - Normaliza nombres de columnas (elimina BOM, NBSP, espacios extras)
         - Reconoce variaciones en nombres de columnas (case-insensitive)
         """
-        print("[SettingsView] Abriendo dialogo para cargar lineas de credito...")
+        print("[SettingsView] Abriendo dialogo para cargar información de contrapartes...")
         
         file_path, _ = QFileDialog.getOpenFileName(
             self,
-            "Seleccionar archivo de líneas de crédito",
+            "Seleccionar archivo de contrapartes",
             "",
             "Archivos CSV (*.csv);;Todos los archivos (*)"
         )
@@ -325,7 +323,6 @@ class SettingsView(QWidget):
                 "nit": "NIT",
                 "contraparte": "Contraparte",
                 "grupo conectado de contrapartes": "Grupo Conectado de Contrapartes",
-                "eur (mm)": "EUR (MM)",
             }
             
             # Mapear columnas según alias (insensible a mayúsculas/minúsculas)
@@ -333,7 +330,7 @@ class SettingsView(QWidget):
             print(f"   ✓ Columnas después de mapeo: {list(df.columns)}")
             
             # Columnas esperadas (mínimas)
-            columnas_esperadas = ["NIT", "Contraparte", "Grupo Conectado de Contrapartes", "EUR (MM)"]
+            columnas_esperadas = ["NIT", "Contraparte", "Grupo Conectado de Contrapartes"]
             
             # Validar columnas requeridas
             faltantes = [col for col in columnas_esperadas if col not in df.columns]
@@ -352,39 +349,19 @@ class SettingsView(QWidget):
             print(f"   ✓ Columnas validadas correctamente")
             print(f"   → Filas leídas: {len(df)}")
             
-            # 🔹 Limpiar y normalizar la columna NIT (quitar guiones)
-            df["NIT"] = df["NIT"].str.replace("-", "", regex=False).str.strip()
-            print(f"   ✓ NITs normalizados (guiones eliminados)")
-            
-            # 🔹 Función auxiliar para limpiar y convertir valores numéricos en MM (millones)
-            def _to_mm(series: pd.Series) -> pd.Series:
-                """
-                Limpia y convierte una serie a valores numéricos en MM (millones).
-                Mantiene los valores como están (en millones), NO multiplica.
-                """
-                return (series.astype(str).str.strip()
-                        .str.replace(r"[^\d,.\-]", "", regex=True)
-                        .str.replace(",", "", regex=False)
-                        .str.replace(" ", "", regex=False)
-                        .pipe(pd.to_numeric, errors="coerce").fillna(0))
-            
-            # 🔹 Procesar columnas numéricas (mantener en millones)
-            if "EUR (MM)" in df.columns:
-                df["EUR (MM)"] = _to_mm(df["EUR (MM)"])
-                print(f"   ✓ EUR (MM) limpiado (MM)")
-            
-            # 🔹 Crear columna COP (MM) vacía (se calculará con TRM)
-            # COP (MM) es un valor DERIVADO, NO se lee del CSV
-            df["COP (MM)"] = pd.NA
-            print(f"   ✓ COP (MM) creada vacía (se calculará con TRM COP/EUR)")
-            
-            # 🔹 Nota: COP (MM) se calculará automáticamente en el controlador 
-            # cuando se guarde el DF en el modelo (usando TRM COP/EUR vigente).
-            # Ver: SettingsController._recalc_lineas_credito_with_trm()
+            # 🔹 Limpiar y normalizar la columna NIT (quitar guiones y espacios)
+            df["NIT"] = (
+                df["NIT"].astype(str)
+                .str.replace("-", "", regex=False)
+                .str.replace(" ", "", regex=False)
+                .str.strip()
+            )
+            print(f"   ✓ NITs normalizados (guiones y espacios eliminados)")
             
             # 🔹 Limpiar filas sin NIT o Contraparte
             filas_antes = len(df)
-            df = df.dropna(subset=["NIT", "Contraparte"])
+            df["Contraparte"] = df["Contraparte"].astype(str).str.strip()
+            df = df[(df["NIT"].str.strip() != "") & (df["Contraparte"] != "")]
             filas_despues = len(df)
             
             if filas_antes > filas_despues:
@@ -396,7 +373,6 @@ class SettingsView(QWidget):
                 # que dispara el recálculo automático en el controlador
                 self._settings_model.set_lineas_credito(df)
                 print(f"   ✓ DataFrame guardado en SettingsModel ({len(df)} filas)")
-                print(f"   → Se aplicará recálculo automático con TRM COP/EUR vigente")
             else:
                 print(f"   ⚠️  Modelo no disponible, no se puede guardar")
             
@@ -404,8 +380,8 @@ class SettingsView(QWidget):
             QMessageBox.information(
                 self,
                 "Carga exitosa",
-                f"El archivo de líneas de crédito fue cargado correctamente.\n\n"
-                f"Líneas de crédito cargadas: {len(df)}"
+                f"El archivo de información de contrapartes fue cargado correctamente.\n\n"
+                f"Contrapartes cargadas: {len(df)}"
             )
             
             print(f"   ✅ Carga completada exitosamente")
@@ -422,18 +398,17 @@ class SettingsView(QWidget):
     
     def mostrar_lineas_credito(self, df):
         """
-        Muestra los datos del DataFrame de líneas de crédito en la tabla.
+        Muestra los datos del DataFrame de contrapartes en la tabla.
         
         Args:
-            df: DataFrame de pandas con las líneas de crédito
+            df: DataFrame de pandas con las contrapartes
         """
         import pandas as pd
         
-        print(f"[SettingsView] Mostrando {len(df)} líneas de crédito en la tabla...")
+        print(f"[SettingsView] Mostrando {len(df)} contrapartes en la tabla...")
         
-        # Determinar columnas a mostrar (solo las actualmente usadas)
-        columnas_orden = ["NIT", "Contraparte", "Grupo Conectado de Contrapartes", 
-                         "EUR (MM)", "COP (MM)"]
+        # Determinar columnas a mostrar (solo las requeridas)
+        columnas_orden = ["NIT", "Contraparte", "Grupo Conectado de Contrapartes"]
         
         # Filtrar solo las que existen en el DataFrame
         columnas_a_mostrar = [col for col in columnas_orden if col in df.columns]
@@ -442,15 +417,8 @@ class SettingsView(QWidget):
         self.tblLineasCredito.setRowCount(0)
         self.tblLineasCredito.setColumnCount(len(columnas_a_mostrar))
         
-        # Configurar encabezados (abreviar nombres largos)
-        headers_display = []
-        for col in columnas_a_mostrar:
-            if col == "Grupo Conectado de Contrapartes":
-                headers_display.append("Grupo")
-            else:
-                headers_display.append(col)
-        
-        self.tblLineasCredito.setHorizontalHeaderLabels(headers_display)
+        # Configurar encabezados (mantener nombres exactos)
+        self.tblLineasCredito.setHorizontalHeaderLabels(columnas_a_mostrar)
         
         # Insertar filas
         for i, row in df.iterrows():
@@ -464,15 +432,6 @@ class SettingsView(QWidget):
                     texto = str(valor)
                 elif col in ["Contraparte", "Grupo Conectado de Contrapartes"]:
                     texto = str(valor) if pd.notna(valor) else ""
-                elif col in ["EUR (MM)", "COP (MM)"]:
-                    # Formatear valores en millones (MM)
-                    if pd.notna(valor) and valor is not None:
-                        try:
-                            texto = f"{float(valor):,.3f}"
-                        except (ValueError, TypeError):
-                            texto = "—"
-                    else:
-                        texto = "—"
                 else:
                     texto = str(valor) if pd.notna(valor) else ""
                 
@@ -542,7 +501,7 @@ class SettingsView(QWidget):
         """
         [OBSOLETO] Este método ya no es necesario.
         
-        La tabla de líneas de crédito ahora usa QTableWidget y se actualiza
+        La tabla de contrapartes ahora usa QTableWidget y se actualiza
         directamente desde el método cargar_csv_lineas_credito().
         
         Args:

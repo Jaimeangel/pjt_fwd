@@ -19,7 +19,7 @@ class SettingsModel(QObject):
     - Gestionar TRM COP/USD vigente
     - Gestionar TRM EUR/USD vigente
     - Gestionar parámetros normativos
-    - Gestionar líneas de crédito vigentes
+    - Gestionar información de contrapartes
     - Notificar cambios en tiempo real mediante señales
     """
     
@@ -49,8 +49,8 @@ class SettingsModel(QObject):
         self._colchon_seguridad: float = 0.10  # Colchón de seguridad (10% por defecto)
         self._lll_percent: float = 25.0  # LLL por defecto (25% del patrimonio)
         
-        # Líneas de Crédito Vigentes
-        self._lineas_credito_df = pd.DataFrame()  # DataFrame con líneas de crédito cargadas
+        # Información de contrapartes
+        self._lineas_credito_df = pd.DataFrame()  # DataFrame con contrapartes cargadas
         
         print("[SettingsModel] Inicializado SIN valores por defecto (todos en None)")
     
@@ -215,22 +215,29 @@ class SettingsModel(QObject):
         """Devuelve el porcentaje de LLL configurado (por defecto 25%)."""
         return float(self._lll_percent or 25.0)
     
-    # === Líneas de Crédito ===
+    # === Información de contrapartes ===
     
     @property
     def lineas_credito_df(self) -> pd.DataFrame:
-        """Devuelve el DataFrame de líneas de crédito vigente (solo lectura)."""
+        """Devuelve el DataFrame de contrapartes (solo lectura)."""
         return self._lineas_credito_df
     
     def set_lineas_credito(self, df: pd.DataFrame) -> None:
         """
-        Establece el DataFrame de líneas de crédito vigentes.
+        Establece el DataFrame de información de contrapartes.
         Normaliza el NIT (elimina guiones, espacios, ceros a la izquierda) antes de almacenar.
         
         Args:
-            df: DataFrame con columnas NIT, Contraparte, Grupo, EUR (MM), COP (MM)
+            df: DataFrame con columnas NIT, Contraparte, Grupo Conectado de Contrapartes
         """
         df = df.copy()
+        
+        # Conservar solo columnas relevantes (ignorar extras)
+        required_cols = ["NIT", "Contraparte", "Grupo Conectado de Contrapartes"]
+        for col in required_cols:
+            if col not in df.columns:
+                df[col] = ""
+        df = df[required_cols].copy()
         
         # Normalizar NIT usando la función de utilidades (crear columna NIT_norm)
         if "NIT" in df.columns:
@@ -252,11 +259,11 @@ class SettingsModel(QObject):
         self._lineas_credito_df = df
         self.lineasCreditoChanged.emit()
         self.counterpartiesChanged.emit()
-        print(f"[SettingsModel] Líneas de crédito actualizadas: {len(df)} registros")
+        print(f"[SettingsModel] Contrapartes actualizadas: {len(df)} registros")
     
     def get_linea_credito_por_nit(self, nit: str) -> Optional[Dict[str, Any]]:
         """
-        Obtiene la línea de crédito para un NIT específico.
+        Obtiene la contraparte para un NIT específico.
         
         Args:
             nit: NIT del cliente (sin guiones)
@@ -281,16 +288,6 @@ class SettingsModel(QObject):
             "grupo": str(cliente_info["Grupo Conectado de Contrapartes"].iloc[0])
         }
         
-        # COP (MM) es la línea aprobada en COP (millones)
-        if "COP (MM)" in cliente_info.columns:
-            cop_mm = cliente_info["COP (MM)"].iloc[0]
-            result["linea_cop_mm"] = float(cop_mm) if pd.notna(cop_mm) else 0.0
-        
-        # EUR (MM) si existe
-        if "EUR (MM)" in cliente_info.columns:
-            eur_mm = cliente_info["EUR (MM)"].iloc[0]
-            result["eur_mm"] = float(eur_mm) if pd.notna(eur_mm) else None
-        
         return result
     
     # === Métodos de utilidad ===
@@ -311,14 +308,14 @@ class SettingsModel(QObject):
     
     def get_counterparties(self) -> List[Dict[str, Any]]:
         """
-        Devuelve el catálogo de contrapartes desde la tabla de Líneas de Crédito.
+        Devuelve el catálogo de contrapartes desde la tabla de información de contrapartes.
         
         Returns:
             Lista de diccionarios con estructura:
-            [{nit, nombre, grupo, eur_mm, cop_mm}, ...]
+            [{nit, nombre, grupo}, ...]
             
         Notes:
-            - Devuelve lista vacía si no hay líneas de crédito cargadas
+            - Devuelve lista vacía si no hay contrapartes cargadas
             - Deduplicación por NIT normalizado (mantiene primer registro)
             - NITs normalizados (sin espacios, guiones, ceros a la izquierda)
         """
@@ -337,8 +334,6 @@ class SettingsModel(QObject):
                 "nit": nit_norm,
                 "nombre": row.get("Contraparte", ""),
                 "grupo": row.get("Grupo Conectado de Contrapartes", ""),
-                "eur_mm": row.get("EUR (MM)") if "EUR (MM)" in cols else None,
-                "cop_mm": row.get("COP (MM)") if "COP (MM)" in cols else None,
             })
         
         # Deduplicar por NIT (mantener primero)
