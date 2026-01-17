@@ -70,7 +70,6 @@ class ForwardView(QWidget):
         self.lblTRM_COP_EUR = None
         self.cmbClientes = None
         
-        self.lblLineaCredito = None
         self.lblLimiteMax = None
         self.lbl_out_cte_value = None
         self.lbl_out_cte_sim_value = None
@@ -375,34 +374,34 @@ class ForwardView(QWidget):
         
         # Card C: Parámetros de crédito
         card_c = self._create_card("Parámetros de crédito")
-        card_c_layout = QGridLayout()
+        
+        # Layout principal del card con centrado horizontal
+        card_c_main_layout = QHBoxLayout()
+        card_c_main_layout.addStretch()  # Espacio izquierdo
+        
+        # Contenedor centrado para el único parámetro (LLL)
+        card_c_content = QWidget()
+        card_c_layout = QVBoxLayout(card_c_content)
         card_c_layout.setSpacing(8)
-        card_c_layout.setContentsMargins(10, 10, 10, 10)
+        card_c_layout.setContentsMargins(20, 10, 20, 10)
         
         font_value = QFont()
         font_value.setBold(True)
         
-        # Línea de crédito aprobada (columna 0)
-        lbl_linea_title = QLabel("Línea de crédito aprobada")
-        lbl_linea_title.setAlignment(Qt.AlignCenter)
-        self.lblLineaCredito = QLabel("—")  # Sin valor por defecto
-        self.lblLineaCredito.setObjectName("lblLineaCredito")
-        self.lblLineaCredito.setFont(font_value)
-        self.lblLineaCredito.setAlignment(Qt.AlignCenter)
-        card_c_layout.addWidget(lbl_linea_title, 0, 0)
-        card_c_layout.addWidget(self.lblLineaCredito, 1, 0)
-        
-        # Límite máximo permitido (columna 1)
+        # Límite máximo permitido (LLL) - único campo centrado
         lbl_limite_title = QLabel("Límite máximo permitido (LLL) (25%)")
         lbl_limite_title.setAlignment(Qt.AlignCenter)
         self.lblLimiteMax = QLabel("—")  # Sin valor por defecto
         self.lblLimiteMax.setObjectName("lblLimiteMax")
         self.lblLimiteMax.setFont(font_value)
         self.lblLimiteMax.setAlignment(Qt.AlignCenter)
-        card_c_layout.addWidget(lbl_limite_title, 0, 1)
-        card_c_layout.addWidget(self.lblLimiteMax, 1, 1)
+        card_c_layout.addWidget(lbl_limite_title)
+        card_c_layout.addWidget(self.lblLimiteMax)
         
-        card_c.setLayout(card_c_layout)
+        card_c_main_layout.addWidget(card_c_content)
+        card_c_main_layout.addStretch()  # Espacio derecho
+        
+        card_c.setLayout(card_c_main_layout)
         card_c.setMaximumHeight(120)
         column_layout.addWidget(card_c)
         
@@ -1006,19 +1005,17 @@ class ForwardView(QWidget):
                 f"border: 1px solid #d1d9e0; border-radius: 4px; padding: 8px; }}"
             )
     
-    def set_credit_params(self, linea: str, limite: str) -> None:
+    def set_credit_params(self, limite: str) -> None:
         """
-        Actualiza los parámetros de crédito del cliente (línea y límite).
-        Acepta strings directos para máxima flexibilidad (ej. "—" o valores formateados).
+        Actualiza el parámetro de crédito LLL del cliente.
+        Acepta string directo para máxima flexibilidad (ej. "—" o valor formateado).
         
         Args:
-            linea: Línea de crédito autorizada LCA (texto formateado o "—")
             limite: Límite máximo permitido LLL (texto formateado o "—")
         """
-        print(f"[ForwardView] set_credit_params: linea={linea}, limite={limite}")
+        print(f"[ForwardView] set_credit_params: limite={limite}")
         
-        # Asignar directamente los textos sin disparar eventos
-        self.lblLineaCredito.setText(linea)
+        # Asignar directamente el texto sin disparar eventos
         self.lblLimiteMax.setText(limite)
     
     def _format_cop(self, value: Optional[float]) -> str:
@@ -1107,14 +1104,14 @@ class ForwardView(QWidget):
             total_con_simulacion,
         )
     
-    def update_consumo_dual_chart(self, lca_total: float | None, outstanding: float | None = None, outstanding_with_sim: float | None = None) -> None:
+    def update_consumo_dual_chart(self, lll_limit: float | None, outstanding: float | None = None, outstanding_with_sim: float | None = None) -> None:
         """
-        Actualiza la gráfica de consumo vs línea de crédito aprobada.
+        Actualiza la gráfica de consumo vs LLL (25%).
         
-        Muestra dos barras: LCA gris + Consumo apilado verde.
+        Muestra dos barras: LLL (25%) gris + Consumo apilado verde.
         
         Args:
-            lca_total: Línea de crédito aprobada total en COP
+            lll_limit: Límite máximo permitido LLL (25%) en COP
             outstanding: Outstanding actual en COP
             outstanding_with_sim: Outstanding + simulación en COP
         """
@@ -1123,11 +1120,11 @@ class ForwardView(QWidget):
         
         ax = self.ax_consumo2
         ax.clear()
-        ax.set_title("Consumo vs Línea aprobada", fontsize=11, weight='bold')
+        ax.set_title("Consumo vs LLL (25%)", fontsize=11, weight='bold')
         ax.set_ylabel("COP", fontsize=9)
         
         # === Valores ===
-        lca = float(lca_total or 0)
+        lll = float(lll_limit or 0)
         out_now = float(outstanding or 0)
         out_sim = float(outstanding_with_sim or 0)
         
@@ -1138,12 +1135,12 @@ class ForwardView(QWidget):
         # Incremento por simulación (si hay)
         sim_extra = max(out_sim - out_now, 0)
         
-        # Barra 1: Línea de crédito aprobada
-        if lca > 0:
+        # Barra 1: LLL (25%)
+        if lll > 0:
             ax.bar(
-                ["Línea aprobada"], [lca],
+                ["LLL (25%)"], [lll],
                 color="#d0d0d0", edgecolor="#9e9e9e",
-                label="Línea aprobada",
+                label="LLL (25%)",
                 width=0.5
             )
         
@@ -1171,7 +1168,7 @@ class ForwardView(QWidget):
                 )
         
         # Limitar el eje Y con margen superior
-        ymax = max(lca, out_sim, out_now) * 1.10 if max(lca, out_sim, out_now) > 0 else 1
+        ymax = max(lll, out_sim, out_now) * 1.10 if max(lll, out_sim, out_now) > 0 else 1
         
         # === Ejes y formato ===
         ax.ticklabel_format(style="plain", axis="y", useOffset=False)
@@ -1188,7 +1185,7 @@ class ForwardView(QWidget):
         
         self.canvas_consumo2.draw_idle()
         
-        print(f"[ForwardView] Gráfica actualizada: LCA=$ {lca:,.0f}, Outstanding=$ {out_now:,.0f}, Outstanding+Sim=$ {out_sim:,.0f}")
+        print(f"[ForwardView] Gráfica actualizada: LLL (25%)=$ {lll:,.0f}, Outstanding=$ {out_now:,.0f}, Outstanding+Sim=$ {out_sim:,.0f}")
     
     def update_chart(self, data: Dict[str, Any]) -> None:
         """

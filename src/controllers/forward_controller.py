@@ -374,11 +374,8 @@ class ForwardController:
             self._operations_table_model.set_operations(ops_list)
             self._view.set_operations_table(self._operations_table_model)
         
-        # 5) Actualizar parámetros de crédito (LCA y LLL)
+        # 5) Actualizar parámetros de crédito (solo LLL)
         if self._view and self._settings_model:
-            # LCA
-            linea_display = f"$ {lca_real:,.0f}" if lca_real else "—"
-            
             # LLL global (25% del Patrimonio técnico vigente con colchón)
             lll_global = self._settings_model.lll_cop()
             limite_display = f"$ {lll_global:,.0f}" if lll_global else "—"
@@ -390,7 +387,7 @@ class ForwardController:
                     lll_cop=lll_global or 0.0
                 )
             
-            self._view.set_credit_params(linea=linea_display, limite=limite_display)
+            self._view.set_credit_params(limite=limite_display)
         
         # Actualizar UI de grupo (tags bajo el bloque Cliente)
         if self._view:
@@ -400,7 +397,8 @@ class ForwardController:
             self._view.update_group_members(group_name, members_for_ui)
         
         # 6) Recalcular exposición sin simulación
-        self._refresh_exposure(lca_real, outstanding, outstanding)
+        lll_global = self._settings_model.lll_cop() if self._settings_model else 0.0
+        self._refresh_exposure(lll_global, outstanding, outstanding)
         
         # 7) Actualizar información básica
         self._refresh_info_basica()
@@ -418,7 +416,7 @@ class ForwardController:
             if self._operations_table_model:
                 self._operations_table_model.set_operations([])
     
-    def _refresh_exposure(self, lca_real: float | None, outstanding: float, outstanding_with_sim: float):
+    def _refresh_exposure(self, lll_limit: float | None, outstanding: float, outstanding_with_sim: float):
         """
         Actualiza el bloque de exposición y la gráfica con los valores actuales.
         
@@ -451,7 +449,7 @@ class ForwardController:
                 print(f"      Grupo: $ {disp_grp_cop:,.0f} ({disp_grp_pct:.2f}%)")
             
             self._view.update_consumo_dual_chart(
-                lca_total=lca_real or 0.0,
+                lll_limit=lll_limit or 0.0,
                 outstanding=out_cte,
                 outstanding_with_sim=out_cte_sim
             )
@@ -525,9 +523,9 @@ class ForwardController:
         disp_grp_cop, disp_grp_pct = self._data_model.get_lll_availability_group()
         self._view.update_lll_availability(disp_cte_cop, disp_cte_pct, disp_grp_cop, disp_grp_pct)
         
-        # Actualizar gráfica de consumo de línea (LCA + consumo apilado)
+        # Actualizar gráfica de consumo de línea (LLL + consumo apilado)
         self._view.update_consumo_dual_chart(
-            lca_total=LCA,
+            lll_limit=LLL,
             outstanding=out_cte,
             outstanding_with_sim=out_cte_sim
         )
@@ -1010,7 +1008,7 @@ class ForwardController:
                             lll_cop=0.0
                         )
                     if self._view:
-                        self._view.set_credit_params(linea="—", limite="—")
+                        self._view.set_credit_params(limite="—")
                         self._view.notify("Cargue primero 'Información de contrapartes' en Configuraciones.", "warning")
                     return  # No continuar con operaciones si no hay contrapartes
                 
@@ -1035,10 +1033,7 @@ class ForwardController:
                     # 🔹 Actualizar vista con LLL global (sin LCA)
                     if self._view:
                         limite_display = f"$ {lll_global:,.0f}" if lll_global else "—"
-                        self._view.set_credit_params(
-                            linea="—",
-                            limite=limite_display
-                        )
+                        self._view.set_credit_params(limite=limite_display)
                 else:
                     # Cliente NO encontrado en contrapartes
                     print(f"   ⚠️  Cliente con NIT {nit} no encontrado en contrapartes.")
@@ -1057,7 +1052,7 @@ class ForwardController:
                     
                     if self._view:
                         limite_display = f"$ {lll_global:,.0f}" if lll_global else "—"
-                        self._view.set_credit_params(linea="—", limite=limite_display)
+                        self._view.set_credit_params(limite=limite_display)
             else:
                 print(f"   ⚠️  SettingsModel no disponible, no se pueden cargar límites del cliente.")
                 # Resetear límites en el modelo
@@ -1067,7 +1062,7 @@ class ForwardController:
                         lll_cop=0.0
                     )
                 if self._view:
-                    self._view.set_credit_params(linea="—", limite="—")
+                    self._view.set_credit_params(limite="—")
             
             # Calcular exposiciones y disponibilidades LLL
             outstanding = 0.0
