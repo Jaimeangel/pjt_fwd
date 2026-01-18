@@ -341,7 +341,7 @@ class ForwardDataModel:
         Obtiene el factor de conversión (82FC) aplicable a una contraparte.
         
         Si no existe un fc específico para el NIT, devuelve el fc global.
-        Si no hay fc global, devuelve 0.0.
+        Si no hay fc global, devuelve 0.10 (valor por defecto normativo).
         
         Args:
             nit: NIT del cliente
@@ -349,7 +349,17 @@ class ForwardDataModel:
         Returns:
             Factor de conversión (fc)
         """
-        return self.fc_por_nit.get(nit, self.fc_global)
+        # Buscar fc específico del NIT
+        if nit in self.fc_por_nit:
+            return self.fc_por_nit[nit]
+        
+        # Usar fc_global si está disponible
+        if self.fc_global > 0:
+            return self.fc_global
+        
+        # Valor por defecto normativo: 10% (0.10)
+        # Este valor se usa cuando no hay datos del 415
+        return 0.10
     
     def get_outstanding(self, nit: str) -> float:
         """

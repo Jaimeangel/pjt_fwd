@@ -118,12 +118,12 @@ class SettingsController(QObject):
         # Conectar señal de cambio en contrapartes para refrescar la tabla al cargar CSV
         self._model.lineasCreditoChanged.connect(self._on_lineas_credito_loaded)
         
-        print("   ✓ trm_cop_usd.textChanged → model.set_trm_cop_usd()")
-        print("   ✓ trm_cop_eur.textChanged → model.set_trm_cop_eur()")
-        print("   ✓ lePatrimonioTecCOP.textChanged → model.set_patrimonio_tec_cop()")
-        print("   ✓ patrimonioTecCopChanged → _on_patrimonio_changed()")
-        print("   ✓ Parámetros normativos: valores fijos (sin conexiones)")
-        print("   ✓ lineasCreditoChanged → _on_lineas_credito_loaded()")
+        print("   [OK] trm_cop_usd.textChanged -> model.set_trm_cop_usd()")
+        print("   [OK] trm_cop_eur.textChanged -> model.set_trm_cop_eur()")
+        print("   [OK] lePatrimonioTecCOP.textChanged -> model.set_patrimonio_tec_cop()")
+        print("   [OK] patrimonioTecCopChanged -> _on_patrimonio_changed()")
+        print("   [OK] Parametros normativos: valores fijos (sin conexiones)")
+        print("   [OK] lineasCreditoChanged -> _on_lineas_credito_loaded()")
     
     def _on_lineas_credito_loaded(self) -> None:
         """

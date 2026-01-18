@@ -238,7 +238,7 @@ class ForwardController:
         
         # Si no hay catálogo, solo deshabilitar el combo (sin pop-up)
         if not catalog:
-            print("[ForwardController] ⚠️ No hay contrapartes cargadas. Combo deshabilitado.")
+            print("[ForwardController] [!] No hay contrapartes cargadas. Combo deshabilitado.")
         else:
             print(f"[ForwardController] Combo de contrapartes actualizado: {len(catalog)} opciones")
 
@@ -273,13 +273,13 @@ class ForwardController:
         nit_raw = self._view.cmbClientes.itemData(idx) if self._view else None
         
         if not nit_raw:
-            print("[ForwardController] ⚠️ No se pudo obtener NIT de la selección")
+            print("[ForwardController] [!] No se pudo obtener NIT de la selección")
             self._show_empty_exposure()
             return
         
         nit = normalize_nit(str(nit_raw))
         if not nit:
-            print("[ForwardController] ⚠️ NIT inválido en la selección")
+            print("[ForwardController] [!] NIT inválido en la selección")
             self._show_empty_exposure()
             return
         
@@ -288,7 +288,7 @@ class ForwardController:
         print(f"[ForwardController] Contraparte seleccionada: {nombre} (NIT: {nit})")
         
         # 1) Limpiar simulaciones previas
-        print("   → Limpiando simulaciones previas...")
+        print("   -> Limpiando simulaciones previas...")
         if self._view:
             self._view.clear_simulations_table()
             self._view.set_simulate_button_enabled(False)
@@ -308,9 +308,9 @@ class ForwardController:
                 has_real_group = True
                 group_name = members_list[0].get("grupo", "")
                 group_members = [m["nit"] for m in members_list]
-                print(f"   → Grupo detectado: '{group_name}' con {len(group_members)} contrapartes")
+                print(f"   -> Grupo detectado: '{group_name}' con {len(group_members)} contrapartes")
             else:
-                print(f"   → Sin grupo o grupo con solo 1 contraparte")
+                print(f"   -> Sin grupo o grupo con solo 1 contraparte")
         
         # 2) LCA no viene de Configuraciones (solo catálogo de contrapartes)
         lca_real = None
@@ -324,9 +324,9 @@ class ForwardController:
         if self._data_model:
             ops_list = self._data_model.get_operaciones_por_nit(nit)
             if ops_list:
-                print(f"   → {len(ops_list)} operaciones vigentes desde 415")
+                print(f"   -> {len(ops_list)} operaciones vigentes desde 415")
             else:
-                print(f"   → Sin operaciones vigentes en 415 (outstanding = 0)")
+                print(f"   -> Sin operaciones vigentes en 415 (outstanding = 0)")
             
             self._data_model.set_current_client(nit, nombre)
             self._data_model.set_current_group(group_name, group_members)
@@ -336,7 +336,7 @@ class ForwardController:
             exposure_cte = calculate_exposure_from_operations(df_cte)
             outstanding = exposure_cte.get("outstanding", 0.0)
             
-            print(f"   → Outstanding Contraparte: $ {outstanding:,.0f}")
+            print(f"   -> Outstanding Contraparte: $ {outstanding:,.0f}")
             
             # Calcular exposición de grupo SOLO si has_real_group == True
             group_outstanding = 0.0
@@ -344,9 +344,9 @@ class ForwardController:
                 df_group = self._data_model.get_operations_df_for_nits(group_members)
                 exposure_group = calculate_exposure_from_operations(df_group)
                 group_outstanding = exposure_group.get("outstanding", 0.0)
-                print(f"   → Outstanding Grupo: $ {group_outstanding:,.0f}")
+                print(f"   -> Outstanding Grupo: $ {group_outstanding:,.0f}")
             else:
-                print(f"   → Sin grupo real, exposición grupo = 0")
+                print(f"   -> Sin grupo real, exposición grupo = 0")
             
             # Setear exposiciones base (sin simulación)
             self._data_model.set_exposure_counterparty(outstanding, outstanding)
@@ -354,15 +354,15 @@ class ForwardController:
             
             # 🔹 CRÍTICO: Calcular disponibilidades LLL SIEMPRE, incluso si outstanding = 0
             lll_cop = self._get_lll_cop()
-            print(f"   → LLL base para disponibilidad: $ {lll_cop:,.0f}")
+            print(f"   -> LLL base para disponibilidad: $ {lll_cop:,.0f}")
             
             disp_cte_cop = lll_cop - outstanding
             disp_grp_cop = lll_cop - group_outstanding
             disp_cte_pct = (disp_cte_cop / lll_cop * 100.0) if lll_cop > 0 else 0.0
             disp_grp_pct = (disp_grp_cop / lll_cop * 100.0) if lll_cop > 0 else 0.0
             
-            print(f"   → Disponibilidad Contraparte: $ {disp_cte_cop:,.0f} ({disp_cte_pct:.2f}%)")
-            print(f"   → Disponibilidad Grupo: $ {disp_grp_cop:,.0f} ({disp_grp_pct:.2f}%)")
+            print(f"   -> Disponibilidad Contraparte: $ {disp_cte_cop:,.0f} ({disp_cte_pct:.2f}%)")
+            print(f"   -> Disponibilidad Grupo: $ {disp_grp_cop:,.0f} ({disp_grp_pct:.2f}%)")
             
             self._data_model.set_lll_availability(disp_cte_cop, disp_cte_pct, disp_grp_cop, disp_grp_pct)
             
@@ -531,8 +531,8 @@ class ForwardController:
         )
         
         print(f"[ForwardController] Bloque de exposición actualizado:")
-        print(f"   Contraparte: $ {out_cte:,.0f} → $ {out_cte_sim:,.0f}")
-        print(f"   Grupo: $ {out_grp:,.0f} → $ {out_grp_sim:,.0f}")
+        print(f"   Contraparte: $ {out_cte:,.0f} -> $ {out_cte_sim:,.0f}")
+        print(f"   Grupo: $ {out_grp:,.0f} -> $ {out_grp_sim:,.0f}")
     
     def load_415(self, file_path: str) -> None:
         """
@@ -551,13 +551,13 @@ class ForwardController:
             
             # 1. Validar que el archivo existe
             if not file_obj.exists():
-                print(f"   ❌ Error: El archivo no existe")
+                print(f"   [ERROR] Error: El archivo no existe")
                 self._handle_invalid_415(file_path, "Archivo no encontrado")
                 return
             
             # 2. Validar extensión .csv
             if file_obj.suffix.lower() != '.csv':
-                print(f"   ❌ Error: Extensión inválida ({file_obj.suffix}), se esperaba .csv")
+                print(f"   [ERROR] Error: Extensión inválida ({file_obj.suffix}), se esperaba .csv")
                 self._handle_invalid_415(file_path, "Extensión inválida")
                 return
             
@@ -565,8 +565,8 @@ class ForwardController:
             tamano_bytes = file_obj.stat().st_size
             tamano_kb = tamano_bytes / 1024
             
-            print(f"   ✓ Archivo encontrado: {file_obj.name}")
-            print(f"   ✓ Tamaño: {tamano_kb:.2f} KB")
+            print(f"   [OK] Archivo encontrado: {file_obj.name}")
+            print(f"   [OK] Tamaño: {tamano_kb:.2f} KB")
             
             # 4. Leer primeras líneas para validar formato
             with open(file_path, 'r', encoding='utf-8', errors='ignore') as f:
@@ -574,32 +574,32 @@ class ForwardController:
                 
                 # Verificar que hay contenido
                 if not primera_linea:
-                    print(f"   ❌ Error: Archivo vacío")
+                    print(f"   [ERROR] Error: Archivo vacío")
                     self._handle_invalid_415(file_path, "Archivo vacío")
                     return
                 
                 # Verificar que usa separador ;
                 if ';' not in primera_linea:
-                    print(f"   ❌ Error: Separador ';' no encontrado en la cabecera")
+                    print(f"   [ERROR] Error: Separador ';' no encontrado en la cabecera")
                     self._handle_invalid_415(file_path, "Separador inválido")
                     return
                 
                 # Verificar que hay headers
                 headers = primera_linea.split(';')
                 if len(headers) < 3:
-                    print(f"   ❌ Error: Cabecera incompleta (menos de 3 columnas)")
+                    print(f"   [ERROR] Error: Cabecera incompleta (menos de 3 columnas)")
                     self._handle_invalid_415(file_path, "Cabecera incompleta")
                     return
                 
-                print(f"   ✓ Separador ';' detectado")
-                print(f"   ✓ Headers detectados: {len(headers)} columnas")
-                print(f"   ✓ Primeras columnas: {', '.join(headers[:3])}")
+                print(f"   [OK] Separador ';' detectado")
+                print(f"   [OK] Headers detectados: {len(headers)} columnas")
+                print(f"   [OK] Primeras columnas: {', '.join(headers[:3])}")
             
             # 5. Calcular hash simple (md5 del path + tamaño)
             hash_input = f"{file_path}_{tamano_bytes}"
             hash_value = hashlib.md5(hash_input.encode()).hexdigest()[:8]
             
-            print(f"   ✓ Hash: {hash_value}")
+            print(f"   [OK] Hash: {hash_value}")
             
             # 6. Guardar metadatos en el modelo
             if self._data_model:
@@ -610,10 +610,10 @@ class ForwardController:
                     hash_value=hash_value,
                     estado="valido"
                 )
-                print(f"   ✓ Metadatos guardados en ForwardDataModel")
+                print(f"   [OK] Metadatos guardados en ForwardDataModel")
             
             # 7. PROCESAR OPERACIONES VIGENTES
-            print(f"\n   📊 Procesando operaciones vigentes...")
+            print(f"\n   [DATA] Procesando operaciones vigentes...")
             self._process_415_operations(file_path)
             
             # 8. Emitir señal de éxito
@@ -644,10 +644,10 @@ class ForwardController:
                     "info"
                 )
             
-            print(f"   ✅ Archivo 415 validado y procesado exitosamente")
+            print(f"   [OK] Archivo 415 validado y procesado exitosamente")
             
         except Exception as e:
-            print(f"   ❌ Error al cargar 415: {e}")
+            print(f"   [ERROR] Error al cargar 415: {e}")
             import traceback
             traceback.print_exc()
             self._handle_invalid_415(file_path, f"Error: {str(e)}")
@@ -732,10 +732,10 @@ class ForwardController:
             df_operations = loader.load_operations_from_415(file_path)
             
             if df_operations.empty:
-                print(f"      ⚠️  No hay operaciones vigentes en el archivo")
+                print(f"      [!]  No hay operaciones vigentes en el archivo")
                 return
             
-            print(f"      ✓ {len(df_operations)} operaciones vigentes cargadas")
+            print(f"      [OK] {len(df_operations)} operaciones vigentes cargadas")
             
             # 2. Procesar columnas derivadas
             print(f"      [2/3] Calculando columnas derivadas...")
@@ -745,7 +745,7 @@ class ForwardController:
             # Guardar en el modelo
             if self._data_model:
                 self._data_model.dataset_415 = df_enriched
-                print(f"      ✓ Dataset guardado en ForwardDataModel")
+                print(f"      [OK] Dataset guardado en ForwardDataModel")
             
             # 3. Calcular exposición crediticia por NIT
             print(f"      [3/3] Calculando exposición crediticia por cliente...")
@@ -757,11 +757,11 @@ class ForwardController:
                 operaciones_list = df_enriched.to_dict('records')
                 self._data_model.set_datos_415(operaciones_list, exposure_by_nit)
                 
-                print(f"      ✓ Exposiciones calculadas para {len(exposure_by_nit)} clientes")
+                print(f"      [OK] Exposiciones calculadas para {len(exposure_by_nit)} clientes")
                 
                 # Mostrar resumen
                 total_exposure = sum(exposure_by_nit.values())
-                print(f"      ✓ Exposición total: $ {total_exposure:,.2f}")
+                print(f"      [OK] Exposición total: $ {total_exposure:,.2f}")
                 
                 # NOTA: Ya no actualizamos el combo desde el 415
             # El combo se puebla únicamente desde Settings (Información de contrapartes)
@@ -770,10 +770,10 @@ class ForwardController:
                 #     nombres_clientes = self._data_model.get_client_names()
                 #     self._view.set_client_list(nombres_clientes)
             
-            print(f"      ✅ Procesamiento de operaciones completado (combo NO actualizado desde 415)")
+            print(f"      [OK] Procesamiento de operaciones completado (combo NO actualizado desde 415)")
             
         except Exception as e:
-            print(f"      ❌ Error procesando operaciones: {e}")
+            print(f"      [ERROR] Error procesando operaciones: {e}")
             import traceback
             traceback.print_exc()
     
@@ -798,9 +798,9 @@ class ForwardController:
                 print(f"            Total VR: $ {result.get('total_vr', 0.0):,.2f}")
                 print(f"            MGP: {result.get('mgp', 0.0):.6f}")
                 print(f"            CRP: $ {result.get('crp', 0.0):,.2f}")
-                print(f"            → Exposición Crediticia: $ {result.get('outstanding', 0.0):,.2f}")
+                print(f"            -> Exposición Crediticia: $ {result.get('outstanding', 0.0):,.2f}")
             except Exception as e:
-                print(f"         ⚠️  Error calculando exposición para NIT {nit}: {e}")
+                print(f"         [!]  Error calculando exposición para NIT {nit}: {e}")
                 exposure_by_nit[nit] = 0.0
         
         return exposure_by_nit
@@ -826,7 +826,7 @@ class ForwardController:
             
             # 1. Validar que el archivo existe
             if not file_obj.exists():
-                print(f"   ❌ Error: El archivo no existe")
+                print(f"   [ERROR] Error: El archivo no existe")
                 if self._view:
                     self._view.notify(f"Archivo IBR no encontrado", "error")
                     self._view.update_ibr_status(None, "Inválido")
@@ -834,20 +834,20 @@ class ForwardController:
             
             # 2. Validar extensión .csv
             if file_obj.suffix.lower() != '.csv':
-                print(f"   ❌ Error: Extensión inválida ({file_obj.suffix}), se esperaba .csv")
+                print(f"   [ERROR] Error: Extensión inválida ({file_obj.suffix}), se esperaba .csv")
                 if self._view:
                     self._view.notify(f"Archivo IBR debe ser .csv", "error")
                     self._view.update_ibr_status(None, "Inválido")
                 return
             
-            print(f"   ✓ Archivo encontrado: {file_obj.name}")
+            print(f"   [OK] Archivo encontrado: {file_obj.name}")
             
             # 3. Cargar curva IBR
-            print(f"   📊 Cargando curva IBR...")
+            print(f"   [DATA] Cargando curva IBR...")
             ibr_curve = load_ibr_csv(file_path)
             
             if not ibr_curve:
-                print(f"   ❌ Error: Curva IBR vacía")
+                print(f"   [ERROR] Error: Curva IBR vacía")
                 if self._view:
                     self._view.notify(f"Archivo IBR vacío o inválido", "error")
                     self._view.update_ibr_status(file_path, "Inválido")
@@ -855,19 +855,19 @@ class ForwardController:
             
             # 4. Validar curva
             if not validate_ibr_curve(ibr_curve):
-                print(f"   ❌ Error: Curva IBR inválida")
+                print(f"   [ERROR] Error: Curva IBR inválida")
                 if self._view:
                     self._view.notify(f"Curva IBR contiene datos inválidos", "error")
                     self._view.update_ibr_status(file_path, "Inválido")
                 return
             
-            print(f"   ✓ Curva IBR cargada: {len(ibr_curve)} puntos")
+            print(f"   [OK] Curva IBR cargada: {len(ibr_curve)} puntos")
             
             # Mostrar algunos puntos de muestra
             sample_points = sorted(ibr_curve.keys())[:5]
             for dias in sample_points:
                 tasa_pct = ibr_curve[dias] * 100
-                print(f"      {dias} días → {tasa_pct:.4f}%")
+                print(f"      {dias} días -> {tasa_pct:.4f}%")
             
             # 5. Calcular metadatos del archivo
             tamano_kb = os.path.getsize(file_path) / 1024.0
@@ -878,7 +878,7 @@ class ForwardController:
             if self._data_model:
                 self._data_model.set_ibr_curve(ibr_curve, file_path)
                 self._data_model.set_ibr_metadata(nombre_archivo, tamano_kb, timestamp, "Cargado")
-                print(f"   ✓ Curva IBR guardada en ForwardDataModel")
+                print(f"   [OK] Curva IBR guardada en ForwardDataModel")
             
             # 7. Actualizar vista
             if self._view:
@@ -896,10 +896,10 @@ class ForwardController:
                     "info"
                 )
             
-            print(f"   ✅ Archivo IBR cargado exitosamente")
+            print(f"   [OK] Archivo IBR cargado exitosamente")
             
         except Exception as e:
-            print(f"   ❌ Error al cargar IBR: {e}")
+            print(f"   [ERROR] Error al cargar IBR: {e}")
             import traceback
             traceback.print_exc()
             if self._view:
@@ -924,7 +924,7 @@ class ForwardController:
             print(f"[ForwardController] select_client: {nombre_o_nit}")
             
             # 🔹 PASO 1: Limpiar simulaciones previas al cambiar de contraparte
-            print("   → Limpiando simulaciones previas...")
+            print("   -> Limpiando simulaciones previas...")
             if self._view:
                 self._view.clear_simulations_table()
                 self._view.set_simulate_button_enabled(False)
@@ -944,7 +944,7 @@ class ForwardController:
                 nit = nombre_o_nit
             
             if not nit:
-                print(f"   ⚠️  No se pudo determinar el NIT para: {nombre_o_nit}")
+                print(f"   [!]  No se pudo determinar el NIT para: {nombre_o_nit}")
                 # Limpiar vista
                 if self._view:
                     self._view.show_exposure(outstanding=0.0, total_con_simulacion=None, disponibilidad=None)
@@ -956,7 +956,7 @@ class ForwardController:
             
             nit_norm = normalize_nit(nit)
             if not nit_norm:
-                print(f"   ⚠️  NIT inválido o vacío para: {nombre_o_nit}")
+                print(f"   [!]  NIT inválido o vacío para: {nombre_o_nit}")
                 if self._view:
                     self._view.show_exposure(outstanding=0.0, total_con_simulacion=None, disponibilidad=None)
                 if self._operations_table_model:
@@ -966,7 +966,7 @@ class ForwardController:
                 return
             
             nit = nit_norm
-            print(f"   → NIT determinado: {nit}")
+            print(f"   -> NIT determinado: {nit}")
             
             # Guardar cliente actual
             self._current_client_nit = nit
@@ -1000,7 +1000,7 @@ class ForwardController:
             if self._settings_model:
                 # Validar que hay contrapartes cargadas
                 if self._settings_model.lineas_credito_df.empty:
-                    print(f"   ⚠️  No hay contrapartes cargadas en SettingsModel")
+                    print(f"   [!]  No hay contrapartes cargadas en SettingsModel")
                     # Resetear límites en el modelo
                     if self._data_model:
                         self._data_model.set_credit_limits(
@@ -1016,7 +1016,7 @@ class ForwardController:
                 
                 if cliente_info:
                     # Cliente encontrado en contrapartes
-                    print(f"   → Datos del cliente (desde SettingsModel):")
+                    print(f"   -> Datos del cliente (desde SettingsModel):")
                     
                     # 🔹 Obtener LLL GLOBAL (25% del Patrimonio técnico vigente)
                     lll_global = self._settings_model.lll_cop()
@@ -1036,7 +1036,7 @@ class ForwardController:
                         self._view.set_credit_params(limite=limite_display)
                 else:
                     # Cliente NO encontrado en contrapartes
-                    print(f"   ⚠️  Cliente con NIT {nit} no encontrado en contrapartes.")
+                    print(f"   [!]  Cliente con NIT {nit} no encontrado en contrapartes.")
                     
                     # 🔹 Obtener LLL GLOBAL (independiente de si se encontró el cliente)
                     lll_global = self._settings_model.lll_cop()
@@ -1054,7 +1054,7 @@ class ForwardController:
                         limite_display = f"$ {lll_global:,.0f}" if lll_global else "—"
                         self._view.set_credit_params(limite=limite_display)
             else:
-                print(f"   ⚠️  SettingsModel no disponible, no se pueden cargar límites del cliente.")
+                print(f"   [!]  SettingsModel no disponible, no se pueden cargar límites del cliente.")
                 # Resetear límites en el modelo
                 if self._data_model:
                     self._data_model.set_credit_limits(
@@ -1090,7 +1090,7 @@ class ForwardController:
             # Cargar operaciones vigentes del cliente en la tabla
             if self._data_model and self._operations_table_model:
                 operaciones = self._data_model.get_operaciones_por_nit(nit)
-                print(f"   → Cargando {len(operaciones)} operaciones del cliente en la tabla")
+                print(f"   -> Cargando {len(operaciones)} operaciones del cliente en la tabla")
                 self._operations_table_model.set_operations(operaciones)
                 
                 # Actualizar vista de la tabla
@@ -1128,12 +1128,12 @@ class ForwardController:
         nombre = self._data_model.get_current_client_name() if self._data_model else None
         
         if not nit:
-            print("   ⚠️  No hay cliente seleccionado")
+            print("   [!]  No hay cliente seleccionado")
             if self._view:
                 self._view.notify("Seleccione primero una contraparte.", "warning")
             return
         
-        print(f"   → Cliente seleccionado: {nombre}")
+        print(f"   -> Cliente seleccionado: {nombre}")
         
         # Crear una nueva fila vacía (sin modificar exposición)
         if self._simulations_table_model:
@@ -1154,7 +1154,7 @@ class ForwardController:
                 "obligacion": None,
                 "fair_value": None
             })
-            print("   → Fila agregada a la tabla de simulaciones")
+            print("   -> Fila agregada a la tabla de simulaciones")
         
         # 🔒 Importante: NO tocar los labels de exposición aquí.
         # No llamar show_exposure ni modificar lblOutstanding ni lblOutstandingSim.
@@ -1174,7 +1174,7 @@ class ForwardController:
         if self._simulations_table_model and rows:
             success = self._simulations_table_model.remove_rows(rows)
             if success:
-                print(f"   → {len(rows)} fila(s) eliminada(s) de la tabla")
+                print(f"   -> {len(rows)} fila(s) eliminada(s) de la tabla")
         
         # Limpiar Outstanding + simulación (ya no hay simulaciones activas)
         if self._data_model:
@@ -1201,7 +1201,7 @@ class ForwardController:
         # 1) Validaciones básicas
         nit = self._data_model.get_current_client_nit() if self._data_model else None
         if not nit:
-            print("   ⚠️  No hay contraparte seleccionada")
+            print("   [!]  No hay contraparte seleccionada")
             if self._view:
                 self._view.notify("Seleccione primero una contraparte.", "warning")
             return
@@ -1210,13 +1210,13 @@ class ForwardController:
         selected_rows = self._view.get_selected_simulation_rows() if self._view else []
         
         if not selected_rows:
-            print("   ⚠️  No hay filas de simulación seleccionadas")
+            print("   [!]  No hay filas de simulación seleccionadas")
             if self._view:
                 self._view.notify("Seleccione al menos una operación para simular (Ctrl o Shift para múltiple).", "warning")
             return
         
-        print(f"   → Filas seleccionadas: {len(selected_rows)} ({selected_rows})")
-        print(f"   → Cliente: {nit}")
+        print(f"   -> Filas seleccionadas: {len(selected_rows)} ({selected_rows})")
+        print(f"   -> Cliente: {nit}")
         
         # Deshabilitar botón durante el cálculo
         if self._view and hasattr(self._view, 'btnRun'):
@@ -1235,15 +1235,20 @@ class ForwardController:
         nombre = self._data_model.get_current_client_name() if self._data_model else ""
         fc = self._data_model.get_fc_for_nit(nit) if self._data_model else 0.0
         
-        print(f"   → Nombre: {nombre}")
-        print(f"   → FC: {fc}")
+        print(f"   -> Nombre: {nombre}")
+        print(f"   -> FC para simulación: {fc}")
+        
+        # 🔹 VALIDACIÓN: Si fc = 0, las operaciones simuladas tendrán EPFp = 0
+        if fc == 0:
+            print(f"   [!]  ADVERTENCIA: FC = 0 resultará en EPFp = 0 (sin exposición)")
+            print(f"   [!]  Esto ocurre cuando no hay datos del 415 para este NIT")
         
         # Validar cada fila seleccionada
         for row_idx in selected_rows:
             row = self._simulations_table_model.get_row_data(row_idx) if self._simulations_table_model else None
             
             if not row:
-                print(f"   ❌ Error: No se pudo obtener datos de la fila {row_idx}")
+                print(f"   [ERROR] Error: No se pudo obtener datos de la fila {row_idx}")
                 if self._view and hasattr(self._view, 'btnRun'):
                     self._view.btnRun.setEnabled(True)
                 return
@@ -1252,7 +1257,7 @@ class ForwardController:
             for field_key, field_name in required_fields.items():
                 value = row.get(field_key)
                 if value is None or value == "":
-                    print(f"   ❌ Fila {row_idx}: Falta el campo: {field_name}")
+                    print(f"   [ERROR] Fila {row_idx}: Falta el campo: {field_name}")
                     if self._view:
                         self._view.notify(f"Fila {row_idx + 1}: Complete el campo '{field_name}'", "warning")
                         if hasattr(self._view, 'btnRun'):
@@ -1263,13 +1268,28 @@ class ForwardController:
             simulated_op = self._simulation_processor.build_simulated_operation(row, nit, nombre, fc)
             simulated_ops.append(simulated_op)
             
-            print(f"   ✓ Fila {row_idx}: Deal={simulated_op.get('deal')}, VNA={simulated_op.get('vna'):,.2f} USD")
+            print(f"   [OK] Fila {row_idx}: Deal={simulated_op.get('deal')}, VNA={simulated_op.get('vna'):,.2f} USD")
         
-        print(f"\n   ✓ Todas las filas ({len(simulated_ops)}) validadas y convertidas")
+        print(f"\n   [OK] Todas las filas ({len(simulated_ops)}) validadas y convertidas")
         
         # 3) Obtener operaciones vigentes del cliente
         vigentes = self._data_model.get_operaciones_por_nit(nit) if self._data_model else []
-        print(f"\n   📋 Operaciones vigentes del cliente: {len(vigentes)}")
+        print(f"\n   [INFO] Operaciones vigentes del cliente: {len(vigentes)}")
+        
+        # 🔹 LOGS DE DIAGNÓSTICO: Mostrar valores críticos de la simulación
+        # SOLO cuando NO hay operaciones vigentes (caso del bug)
+        if len(vigentes) == 0 and len(simulated_ops) == 1:
+            print(f"\n   [SimulationDebug] DIAGNÓSTICO - Operación simulada (sin vigentes):")
+            sim = simulated_ops[0]
+            print(f"      vna    = {sim.get('vna', 'N/A')}")
+            print(f"      trm    = {sim.get('trm', 'N/A')}")
+            print(f"      fc     = {sim.get('fc', 'N/A')}")
+            print(f"      delta  = {sim.get('delta', 'N/A')}")
+            print(f"      td     = {sim.get('td', 'N/A')}")
+            print(f"      t      = {sim.get('t', 'N/A')}")
+            print(f"      vne    = {sim.get('vne', 'N/A')}")
+            print(f"      EPFp   = {sim.get('EPFp', 'N/A')}")
+            print(f"      vr     = {sim.get('vr', 'N/A')}")
         
         group_members = self._data_model.current_group_members_nits() if self._data_model else []
         if not group_members:
@@ -1289,14 +1309,14 @@ class ForwardController:
             # Sin operaciones vigentes, usar SOLO simuladas (este es el caso del bug)
             df_cte_sim = df_simulated_ops.copy()
             df_group_sim = df_simulated_ops.copy()
-            print(f"   ⚠️  NO hay operaciones vigentes - universo = SOLO simuladas ({len(df_simulated_ops)} ops)")
+            print(f"   [!]  NO hay operaciones vigentes - universo = SOLO simuladas ({len(df_simulated_ops)} ops)")
         else:
             # Hay vigentes Y simuladas, concatenar ambas
             df_cte_sim = pd.concat([df_cte, df_simulated_ops], ignore_index=True)
             df_group_sim = pd.concat([df_group, df_simulated_ops], ignore_index=True)
         
         # Log para debugging
-        print(f"\n   📊 Universo de operaciones:")
+        print(f"\n   [DATA] Universo de operaciones:")
         print(f"      Vigentes contraparte: {len(df_cte)}")
         print(f"      Vigentes grupo: {len(df_group)}")
         print(f"      Simuladas: {len(df_simulated_ops)}")
@@ -1313,7 +1333,7 @@ class ForwardController:
         group_outstanding = exposure_group_base.get("outstanding", 0.0)
         group_outstanding_sim = exposure_group_sim.get("outstanding", 0.0)
         
-        print(f"\n   💰 Exposición calculada:")
+        print(f"\n   [$] Exposición calculada:")
         print(f"      Outstanding base: $ {outstanding:,.2f}")
         print(f"      Outstanding + sim: $ {outstanding_with_sim:,.2f}")
         print(f"      Grupo base: $ {group_outstanding:,.2f}")

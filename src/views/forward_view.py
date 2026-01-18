@@ -785,7 +785,7 @@ class ForwardView(QWidget):
         # Desbloquear señales
         self.cmbClientes.blockSignals(False)
         
-        print(f"   ✓ Combo de clientes actualizado con {len(clientes)} opciones (sin selección)")
+        print(f"   [OK] Combo de clientes actualizado con {len(clientes)} opciones (sin seleccion)")
     
     def populate_counterparties(self, items: List[Dict[str, Any]]) -> None:
         """
@@ -798,7 +798,7 @@ class ForwardView(QWidget):
         Notes:
             - El texto visible es el nombre de la contraparte
             - El userData es el NIT normalizado
-            - Fuente: Configuraciones → Información de contrapartes
+            - Fuente: Configuraciones -> Informacion de contrapartes
         """
         print(f"[ForwardView] populate_counterparties: {len(items)} contrapartes desde Settings")
         
@@ -826,7 +826,7 @@ class ForwardView(QWidget):
         # Desbloquear señales
         self.cmbClientes.blockSignals(False)
         
-        print(f"   ✓ Combo de contrapartes actualizado con {len(items)} opciones (sin selección)")
+        print(f"   [OK] Combo de contrapartes actualizado con {len(items)} opciones (sin seleccion)")
     
     def set_group_exposure_visible(self, visible: bool) -> None:
         """
@@ -1338,7 +1338,7 @@ class ForwardView(QWidget):
         
         # Actualizar badge de estado
         if estado == "Cargado":
-            self.lblEstadoIBR.setText("✅ Cargado")
+            self.lblEstadoIBR.setText("[OK] Cargado")
             self.lblEstadoIBR.setStyleSheet(
                 "QLabel { background-color: #4caf50; color: white; "
                 "padding: 4px 12px; border-radius: 3px; }"

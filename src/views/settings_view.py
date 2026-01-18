@@ -293,7 +293,7 @@ class SettingsView(QWidget):
                             dtype=str,
                             keep_default_na=False  # Evita convertir strings vacíos a NaN
                         )
-                        print(f"      ✓ Lectura exitosa con {enc}")
+                        print(f"      [OK] Lectura exitosa con {enc}")
                         break
                     except Exception as e:
                         print(f"      ✗ Falló con {enc}: {e}")
@@ -311,7 +311,7 @@ class SettingsView(QWidget):
                     return c
                 
                 df.columns = [normalizar(c) for c in df.columns]
-                print(f"      ✓ Columnas normalizadas: {list(df.columns)}")
+                print(f"      [OK] Columnas normalizadas: {list(df.columns)}")
                 
                 return df
             
@@ -327,7 +327,7 @@ class SettingsView(QWidget):
             
             # Mapear columnas según alias (insensible a mayúsculas/minúsculas)
             df.rename(columns=lambda c: alias.get(c.lower(), c), inplace=True)
-            print(f"   ✓ Columnas después de mapeo: {list(df.columns)}")
+            print(f"   [OK] Columnas después de mapeo: {list(df.columns)}")
             
             # Columnas esperadas (mínimas)
             columnas_esperadas = ["NIT", "Contraparte", "Grupo Conectado de Contrapartes"]
@@ -335,7 +335,7 @@ class SettingsView(QWidget):
             # Validar columnas requeridas
             faltantes = [col for col in columnas_esperadas if col not in df.columns]
             if faltantes:
-                print(f"   ❌ Error: Columnas faltantes en el archivo")
+                print(f"   [ERROR] Error: Columnas faltantes en el archivo")
                 print(f"      Faltantes: {faltantes}")
                 print(f"      Detectadas: {list(df.columns)}")
                 QMessageBox.warning(
@@ -346,8 +346,8 @@ class SettingsView(QWidget):
                 )
                 return
             
-            print(f"   ✓ Columnas validadas correctamente")
-            print(f"   → Filas leídas: {len(df)}")
+            print(f"   [OK] Columnas validadas correctamente")
+            print(f"   -> Filas leídas: {len(df)}")
             
             # 🔹 Limpiar y normalizar la columna NIT (quitar guiones y espacios)
             df["NIT"] = (
@@ -356,7 +356,7 @@ class SettingsView(QWidget):
                 .str.replace(" ", "", regex=False)
                 .str.strip()
             )
-            print(f"   ✓ NITs normalizados (guiones y espacios eliminados)")
+            print(f"   [OK] NITs normalizados (guiones y espacios eliminados)")
             
             # 🔹 Limpiar filas sin NIT o Contraparte
             filas_antes = len(df)
@@ -365,16 +365,16 @@ class SettingsView(QWidget):
             filas_despues = len(df)
             
             if filas_antes > filas_despues:
-                print(f"   ⚠️  {filas_antes - filas_despues} filas eliminadas por NIT o Contraparte vacío")
+                print(f"   [!]  {filas_antes - filas_despues} filas eliminadas por NIT o Contraparte vacío")
             
             # Guardar el DataFrame en el modelo (única fuente de verdad)
             if self._settings_model:
                 # Al guardar en el modelo, se emite lineasCreditoChanged
                 # que dispara el recálculo automático en el controlador
                 self._settings_model.set_lineas_credito(df)
-                print(f"   ✓ DataFrame guardado en SettingsModel ({len(df)} filas)")
+                print(f"   [OK] DataFrame guardado en SettingsModel ({len(df)} filas)")
             else:
-                print(f"   ⚠️  Modelo no disponible, no se puede guardar")
+                print(f"   [!]  Modelo no disponible, no se puede guardar")
             
             # Mensaje de éxito
             QMessageBox.information(
@@ -384,10 +384,10 @@ class SettingsView(QWidget):
                 f"Contrapartes cargadas: {len(df)}"
             )
             
-            print(f"   ✅ Carga completada exitosamente")
+            print(f"   [OK] Carga completada exitosamente")
         
         except Exception as e:
-            print(f"   ❌ Error al cargar archivo: {e}")
+            print(f"   [ERROR] Error al cargar archivo: {e}")
             import traceback
             traceback.print_exc()
             QMessageBox.critical(
@@ -442,7 +442,7 @@ class SettingsView(QWidget):
         header.setSectionResizeMode(QHeaderView.Stretch)  # Todas las columnas se distribuyen uniformemente
         
         num_cols = len(columnas_a_mostrar)
-        print(f"   ✓ Tabla actualizada con {len(df)} filas y {num_cols} columnas (columnas con tamaño proporcional)")
+        print(f"   [OK] Tabla actualizada con {len(df)} filas y {num_cols} columnas (columnas con tamaño proporcional)")
     
     def load_parametros_generales(self, patrimonio_cop: float, trm: float) -> None:
         """
